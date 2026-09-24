@@ -49,8 +49,8 @@ FEATURE_COLS_NUMERIC = [
     "capacidade_campo_pct"
 ]
 
-CATEGORICAL_SOLO = ["arenoso", "argiloso", "ideal"]
-CATEGORICAL_CULTURA = ["alface", "cafe", "milho", "soja", "tomate"]
+CATEGORICAL_SOLO = ["arenoso", "argiloso", "ideal", "latossolo_vermelho"]
+CATEGORICAL_CULTURA = ["alface", "cafe", "cana", "citros", "milho", "soja", "tomate"]
 
 
 class AgroMultiTaskDataset(Dataset):
@@ -173,12 +173,14 @@ class AgroDataEngine:
         # Trava de chuva
         trava_chuva = (prob6 > 70.0) | (rain6 >= 5.0)
 
-        # Balanço hídrico
+        # Balanço hídrico com ponderação de manejo orgânico (mulching reduz evapotranspiração em 25%)
+        is_org = df["is_organico"].values.astype(np.float32)
+        fator_cobertura = np.where(is_org == 1.0, 0.75, 1.0)
         deficit_u = np.maximum(0.0, cc - u_atual)
-        faixa_disp = np.maximum(0.1, cc - ponto_critico)
+        faixa_disp = np.maximum(0.1, (cc - ponto_critico) * np.where(is_org == 1.0, 1.15, 1.0))
         score_def = np.minimum(1.0, deficit_u / (faixa_disp * 1.5))
 
-        etc_12h = np.maximum(0.0, et0 * kc)
+        etc_12h = np.maximum(0.0, et0 * kc * fator_cobertura)
         deficit_atm = np.maximum(0.0, etc_12h - rain12)
         score_bal = np.minimum(1.0, deficit_atm / 6.0)
 

@@ -63,10 +63,24 @@ CULTURAS_CONFIG: Dict[str, CulturaProfile] = {
         ponto_murcha_pct=2.2,
         profundidade_raiz_m=0.80,
         sensibilidade_estresse=0.60
+    ),
+    "citros": CulturaProfile(
+        nome="citros",
+        kc=0.75,
+        ponto_murcha_pct=2.4,
+        profundidade_raiz_m=0.85,
+        sensibilidade_estresse=0.50
+    ),
+    "cana": CulturaProfile(
+        nome="cana",
+        kc=1.10,
+        ponto_murcha_pct=2.3,
+        profundidade_raiz_m=0.95,
+        sensibilidade_estresse=0.60
     )
 }
 
-# Perfis físicos dos solos (compatíveis com o domínio de umidade 1.0% a 10.0% do dataset)
+# Perfis físicos dos solos (compatíveis com Rio Claro e domínio de umidade)
 SOLO_CONFIG: Dict[str, SoloProfile] = {
     "arenoso": SoloProfile(
         tipo="arenoso",
@@ -85,6 +99,12 @@ SOLO_CONFIG: Dict[str, SoloProfile] = {
         capacidade_campo_pct=9.5,
         ponto_critico_pct=4.9,
         densidade_aparente_g_cm3=1.18
+    ),
+    "latossolo_vermelho": SoloProfile(
+        tipo="latossolo_vermelho",
+        capacidade_campo_pct=8.8,
+        ponto_critico_pct=4.2,
+        densidade_aparente_g_cm3=1.24
     )
 }
 
@@ -157,11 +177,13 @@ def calcular_balanco_hidrico_agronomico(
     et0_fao_12h: float,
     rain_6h: float,
     rain_12h: float,
-    precip_prob_max_6h: float
+    precip_prob_max_6h: float,
+    is_organico: bool = False
 ) -> Tuple[int, float, Dict[str, Any]]:
     """
     Calcula a necessidade de irrigação e lâmina de água (mm) com base nas
     leis de balanço hídrico FAO-56 e regras de negócio com ponderação agronômica.
+    Considera a redução de evapotranspiração promovida pelo mulching no manejo orgânico.
 
     Ponderação:
     - 40% Déficit de Umidade Atual do Solo
@@ -174,6 +196,9 @@ def calcular_balanco_hidrico_agronomico(
     cultura = CULTURAS_CONFIG.get(cultura_nome.lower(), CULTURAS_CONFIG["milho"])
     solo = SOLO_CONFIG.get(tipo_solo.lower(), SOLO_CONFIG["ideal"])
 
+    # Fator de atenuação de evaporação por cobertura morta (mulching) no orgânico
+    fator_cobertura = 0.75 if is_organico else 1.0
+
     # 1. Trava estrita de segurança meteorológica
     trava_chuva = (precip_prob_max_6h > 70.0) or (rain_6h >= 5.0)
     if trava_chuva:
@@ -181,17 +206,18 @@ def calcular_balanco_hidrico_agronomico(
             "trava_chuva_acionada": True,
             "motivo_trava": f"Precipitação iminente detectada (Prob 6h: {precip_prob_max_6h:.1f}%, Chuva 6h: {rain_6h:.1f}mm). Irrigação suspensa.",
             "deficit_solo_pct": max(0.0, solo.capacidade_campo_pct - umidade_atual_pct),
-            "etc_12h_mm": et0_fao_12h * cultura.kc,
-            "balanco_futuro_mm": rain_12h - (et0_fao_12h * cultura.kc),
+            "etc_12h_mm": et0_fao_12h * cultura.kc * fator_cobertura,
+            "balanco_futuro_mm": rain_12h - (et0_fao_12h * cultura.kc * fator_cobertura),
             "fator_ponderado": 0.0
         }
 
     # 2. Componentes de decisão
     deficit_umidade_pct = max(0.0, solo.capacidade_campo_pct - umidade_atual_pct)
-    faixa_disponivel = max(0.1, solo.capacidade_campo_pct - solo.ponto_critico_pct)
+    # Matéria orgânica eleva a retenção de umidade em 15%
+    faixa_disponivel = max(0.1, (solo.capacidade_campo_pct - solo.ponto_critico_pct) * (1.15 if is_organico else 1.0))
     score_deficit = min(1.0, deficit_umidade_pct / (faixa_disponivel * 1.5))
 
-    etc_12h = max(0.0, et0_fao_12h * cultura.kc)
+    etc_12h = max(0.0, et0_fao_12h * cultura.kc * fator_cobertura)
     deficit_atmosferico_mm = max(0.0, etc_12h - rain_12h)
     score_balanco = min(1.0, deficit_atmosferico_mm / 6.0)
 

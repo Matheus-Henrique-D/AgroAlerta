@@ -32,9 +32,20 @@ class AgroDecisionSystem:
 
     def __init__(
         self,
-        model_path: str = "best_agro_multitask.pth",
-        scaler_path: str = "agro_scaler_meta.pkl"
+        model_path: Optional[str] = None,
+        scaler_path: Optional[str] = None
     ):
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        if model_path is None:
+            model_path = os.path.join(base_dir, "best_agro_multitask.pth")
+        elif not os.path.exists(model_path) and os.path.exists(os.path.join(base_dir, model_path)):
+            model_path = os.path.join(base_dir, model_path)
+
+        if scaler_path is None:
+            scaler_path = os.path.join(base_dir, "agro_scaler_meta.pkl")
+        elif not os.path.exists(scaler_path) and os.path.exists(os.path.join(base_dir, scaler_path)):
+            scaler_path = os.path.join(base_dir, scaler_path)
+
         self.model_path = model_path
         self.scaler_path = scaler_path
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
