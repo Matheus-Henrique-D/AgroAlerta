@@ -129,6 +129,7 @@
       </button>
 
       <div id="coleta-status" class="alert-box"></div>
+      <div id="llm-prescricao" style="margin-top: 14px; background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 12px; font-size: 0.82rem; white-space: pre-wrap; display: none; line-height: 1.45;"></div>
     </div>
 
     <!-- ABA 2: MARCAÇÃO DE TALHÃO (3 OU 4 VÉRTICES) -->
@@ -364,8 +365,14 @@
             body: JSON.stringify(payload)
           });
           if (res.ok) {
+            const dadosRes = await res.json();
             status.className = 'alert-box alert-success';
-            status.textContent = '✅ Análise concluída e relatório enviado com sucesso ao seu Telegram!';
+            status.textContent = '✅ Análise concluída e orientações enviadas com sucesso ao seu Telegram!';
+            if (dadosRes.texto_prescritivo_llm) {
+              const boxLlm = document.getElementById('llm-prescricao');
+              boxLlm.style.display = 'block';
+              boxLlm.textContent = dadosRes.texto_prescritivo_llm;
+            }
             return;
           }
         } catch (e) {

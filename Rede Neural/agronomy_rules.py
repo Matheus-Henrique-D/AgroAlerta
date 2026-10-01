@@ -373,3 +373,252 @@ def diagnosticar_solo(
         "condutividade_eletrica_dS_m": {"valor": condutividade, "status": ce_status},
         "compactacao_kpa": {"valor": compactacao, "status": comp_status}
     }
+
+
+# =============================================================================
+# CATÁLOGO DE PRAGAS E DOENÇAS ESPECÍFICAS POR CULTURA
+# =============================================================================
+CATALOGO_PRAGAS_ESPECIFICAS = {
+    "citros": {
+        "fungos_bacterias": [
+            {"nome": "Cancro Cítrico (Xanthomonas citri)", "sintoma": "Lesões salientes e necrosadas com halo amarelo em folhas e frutos"},
+            {"nome": "Mancha Preta dos Citros (Phyllosticta citricarpa)", "sintoma": "Pintas pretas deprimidas na casca da laranja reduzindo valor comercial"},
+            {"nome": "Gomose de Phytophthora", "sintoma": "Exsudação de goma no tronco e apodrecimento radicular em solo úmido"}
+        ],
+        "insetos_lagartas": [
+            {"nome": "Psilídeo (Diaphorina citri) - VETOR DO GREENING/HLB", "sintoma": "Insetos jovens nos brotos novos; transmissão irreversível da pior doença citrícola"},
+            {"nome": "Bicho-Furão (Gymnandrosoma aurantianum)", "sintoma": "Lagartas perfurando a polpa do fruto causando queda prematura"},
+            {"nome": "Larva Minadora dos Citros (Phyllocnistis citrella)", "sintoma": "Galerias prateadas sinuosas nas folhas novas abrindo porta para cancro"}
+        ],
+        "acaros_tripes": [
+            {"nome": "Ácaro da Falsa-Ferrugem (Phyllocoptruta oleivora)", "sintoma": "Aspecto fosco e ferruginoso na casca das laranjas em dias secos"},
+            {"nome": "Ácaro da Leprose (Brevipalpus yothersi)", "sintoma": "Manchas cloróticas em folhas e frutos com anéis concêntricos"}
+        ],
+        "estresse_hidrico_salino": [
+            {"nome": "Estresse Hídrico / Enrolamento Foliar", "sintoma": "Folhas murchas voltadas para cima e abortamento de florada e frutos pequenos"}
+        ],
+        "densidade_plantas_ha": 450
+    },
+    "tomate": {
+        "fungos_bacterias": [
+            {"nome": "Requeima (Phytophthora infestans)", "sintoma": "Grandes manchas verde-escuras e encharcadas com mofo branco na face inferior"},
+            {"nome": "Pinta-Preta (Alternaria solani)", "sintoma": "Manchas castanhas circulares com anéis concêntricos nas folhas baixeiras"},
+            {"nome": "Murcha Bacteriana (Ralstonia solanacearum)", "sintoma": "Murchamento súbito da planta verde e escurecimento vascular"}
+        ],
+        "insetos_lagartas": [
+            {"nome": "Traça-do-Tomateiro (Tuta absoluta)", "sintoma": "Minas transparentes nas folhas e brocas perfurando ponteiros e frutos"},
+            {"nome": "Broca-Pequena (Neoleucinodes elegantalis)", "sintoma": "Orifício diminuto de entrada nos frutos com podridão interna"},
+            {"nome": "Mosca-Branca (Bemisia tabaci)", "sintoma": "Sucção de seiva e transmissão de geminivírus em folhas novas"}
+        ],
+        "acaros_tripes": [
+            {"nome": "Ácaro-do-Bronzeamento (Aculops lycopersici)", "sintoma": "Hastes e folhas com aspecto bronzeado/castanho de baixo para cima"},
+            {"nome": "Tripes (Frankliniella schultzei) - VETOR VIRA-CABEÇA", "sintoma": "Necrose apical e manchas anelares roxas nos frutos"}
+        ],
+        "estresse_hidrico_salino": [
+            {"nome": "Podridão Apical / Fundo Preto", "sintoma": "Deficiência de absorção de Cálcio induzida por irregularidade na rega"}
+        ],
+        "densidade_plantas_ha": 15000
+    },
+    "milho": {
+        "fungos_bacterias": [
+            {"nome": "Enfezamento Vermelho e Pálido (Fitoplasmas)", "sintoma": "Estrias cloróticas e avermelhamento foliar transmitidos pela cigarrinha"},
+            {"nome": "Ferrugem Polissora (Puccinia polysora)", "sintoma": "Pústulas castanho-douradas circulares na face superior das folhas"},
+            {"nome": "Mancha de Cercospora (Cercospora zeae-maydis)", "sintoma": "Lesões retangulares acinzentadas delimitadas pelas nervuras"}
+        ],
+        "insetos_lagartas": [
+            {"nome": "Lagarta-do-Cartucho (Spodoptera frugiperda)", "sintoma": "Folhas raspadas e perfuradas no miolo/cartucho com excrementos úmidos"},
+            {"nome": "Cigarrinha-do-Milho (Dalbulus maidis)", "sintoma": "Vetora dos enfezamentos sistêmicos; insetos amarelos no cartucho"},
+            {"nome": "Percevejo-Barriga-Verde (Diceraeus furcatus)", "sintoma": "Perfurações transversais nas plântulas causando plantas cegas/perfilhamento"}
+        ],
+        "acaros_tripes": [
+            {"nome": "Ácaro-Rajado (Tetranychus urticae)", "sintoma": "Pontuações esbranquiçadas e teias finas na face inferior em estiagens"}
+        ],
+        "estresse_hidrico_salino": [
+            {"nome": "Enrolamento das Folhas em Canudo", "sintoma": "Folhas enroladas para diminuir transpiração e queima precoce das pontas"}
+        ],
+        "densidade_plantas_ha": 65000
+    },
+    "cana": {
+        "fungos_bacterias": [
+            {"nome": "Ferrugem Alaranjada (Puccinia kuehnii)", "sintoma": "Pústulas laranja-escuro agrupadas com necrose prematura do dossel"},
+            {"nome": "Carvão-da-Cana (Sporisorium scitamineum)", "sintoma": "Emissão do apêndice apical em formato de chicote negro"}
+        ],
+        "insetos_lagartas": [
+            {"nome": "Broca-da-Cana (Diatraea saccharalis)", "sintoma": "Galerias nos colmos, quebra pelo vento e podridão vermelha associada"},
+            {"nome": "Bicudo-da-Cana (Sphenophorus levis)", "sintoma": "Larvas danificando o rizoma subterrâneo e causando morte de touceiras"},
+            {"nome": "Cigarrinha-das-Raízes (Mahanarva fimbriolata)", "sintoma": "Espuma branca nas raízes e queima foliar por toxinas salivares"}
+        ],
+        "acaros_tripes": [
+            {"nome": "Ácaro-Verde (Schizotetranychus oryzae)", "sintoma": "Descoramento prateado nas folhas jovens em clima seco"}
+        ],
+        "estresse_hidrico_salino": [
+            {"nome": "Secamento Basal de Colmos", "sintoma": "Perda de turgidez e encurtamento drástico dos entrenós"}
+        ],
+        "densidade_plantas_ha": 8000
+    },
+    "alface": {
+        "fungos_bacterias": [
+            {"nome": "Míldio (Bremia lactucae)", "sintoma": "Manchas amareladas angulares delimitadas pelas nervuras com mofo branco"},
+            {"nome": "Podridão Mole (Pectobacterium carotovorum)", "sintoma": "Tecido encharcado, gelatinoso e com odor fétido característico"}
+        ],
+        "insetos_lagartas": [
+            {"nome": "Lagarta-Rosca (Agrotis ipsilon)", "sintoma": "Corte de mudas recém-transplantadas rente ao nível do solo"},
+            {"nome": "Pulgão-da-Alface (Nasonovia ribisnigri)", "sintoma": "Colônias densas no miolo da alface excretando melada"}
+        ],
+        "acaros_tripes": [
+            {"nome": "Tripes da Alface", "sintoma": "Prateamento foliar e transmissão de viroses do vira-cabeça"}
+        ],
+        "estresse_hidrico_salino": [
+            {"nome": "Queima-de-Bordas (Tip Burn)", "sintoma": "Deficiência localizada de Cálcio em períodos de crescimento rápido com ar seco"}
+        ],
+        "densidade_plantas_ha": 120000
+    },
+    "cafe": {
+        "fungos_bacterias": [
+            {"nome": "Ferrugem do Cafeeiro (Hemileia vastatrix)", "sintoma": "Pústulas amarelo-alaranjadas pulverulentas na página inferior provocando desfolha"},
+            {"nome": "Cercosporiose / Mancha-de-Olho-Pardo (Cercospora coffeicola)", "sintoma": "Manchas circulares com centro claro e halo amarelo em folhas e frutos"}
+        ],
+        "insetos_lagartas": [
+            {"nome": "Bicho-Mineiro (Leucoptera coffeella)", "sintoma": "Minas arredondadas e ressecadas na face superior das folhas com intensa desfolha"},
+            {"nome": "Broca-do-Café (Hypothenemus hampei)", "sintoma": "Perfuração na coroa dos frutos verdes e maduros destruindo as sementes"}
+        ],
+        "acaros_tripes": [
+            {"nome": "Ácaro-Vermelho (Oligonychus ilicis)", "sintoma": "Folhas com aspecto bronzeado e sem brilho em períodos sem chuva"}
+        ],
+        "estresse_hidrico_salino": [
+            {"nome": "Abortamento Floral e Murcha Estival", "sintoma": "Queda massiva de chumbinhos e murcha nas horas mais quentes"}
+        ],
+        "densidade_plantas_ha": 4000
+    },
+    "soja": {
+        "fungos_bacterias": [
+            {"nome": "Ferrugem Asiática (Phakopsora pachyrhizi)", "sintoma": "Pústulas diminutas castanhas na face inferior causando queda prematura de folhas"},
+            {"nome": "Antracnose (Colletotrichum truncatum)", "sintoma": "Escurecimento de nervuras e abortamento de vagens"}
+        ],
+        "insetos_lagartas": [
+            {"nome": "Lagarta-da-Soja (Anticarsia gemmatalis)", "sintoma": "Desfolha severa preservando apenas as nervuras principais"},
+            {"nome": "Percevejo-Marrom (Euschistus heros)", "sintoma": "Picadas nas vagens danificando os grãos e provocando retenção foliar"}
+        ],
+        "acaros_tripes": [
+            {"nome": "Ácaro-Branco (Polyphagotarsonemus latus)", "sintoma": "Folhas novas coriáceas e curvadas para baixo"}
+        ],
+        "estresse_hidrico_salino": [
+            {"nome": "Abortamento de Vagens em R3-R5", "sintoma": "Queda drástica de produtividade por estresse hídrico no enchimento de grãos"}
+        ],
+        "densidade_plantas_ha": 300000
+    }
+}
+
+
+def calcular_detalhes_operacionais_irrigacao(
+    lamina_mm: float,
+    cultura: str,
+    area_ha: float = 1.0
+) -> Dict[str, Any]:
+    """
+    Converte a lâmina em milímetros em parâmetros operacionais de campo:
+    - Horas e minutos de irrigação por Gotejamento e Aspersão;
+    - Litros por planta e volume total em m³;
+    - Volume economizado se a rega for suspensa.
+    """
+    cultura_norm = cultura.lower().strip()
+    info_cultura = CATALOGO_PRAGAS_ESPECIFICAS.get(cultura_norm, CATALOGO_PRAGAS_ESPECIFICAS["milho"])
+    densidade_ha = info_cultura.get("densidade_plantas_ha", 10000)
+
+    # 1 mm = 1 litro por metro quadrado = 10 m³ por hectare = 10.000 litros por hectare
+    volume_total_litros = lamina_mm * 10000.0 * max(0.1, area_ha)
+    volume_total_m3 = volume_total_litros / 1000.0
+    litros_por_planta = (volume_total_litros / (densidade_ha * max(0.1, area_ha))) if densidade_ha > 0 else 0.0
+
+    if lamina_mm <= 0.0:
+        return {
+            "tempo_gotejamento": "Bomba Desligada (0h 00min)",
+            "tempo_gotejamento_minutos": 0,
+            "tempo_aspersao": "Bomba Desligada (0h 00min)",
+            "tempo_aspersao_minutos": 0,
+            "litros_por_planta": 0.0,
+            "volume_necessario_litros": 0.0,
+            "volume_total_m3": 0.0,
+            "volume_economizado_litros": round(35000.0 * max(0.01, area_ha), 0),
+            "status_operacional": "Desligar motobomba e registrar economia hídrica/elétrica"
+        }
+
+    # Premissas hidráulicas médias de campo:
+    # Gotejamento: aplicação líquida de ~2.8 mm/hora
+    # Aspersão: aplicação líquida de ~6.5 mm/hora
+    horas_gotejamento = lamina_mm / 2.8
+    minutos_gotejamento = int(round(horas_gotejamento * 60))
+    h_got, m_got = divmod(minutos_gotejamento, 60)
+
+    horas_aspersao = lamina_mm / 6.5
+    minutos_aspersao = int(round(horas_aspersao * 60))
+    h_asp, m_asp = divmod(minutos_aspersao, 60)
+
+    return {
+        "tempo_gotejamento": f"{h_got}h {m_got:02d}min",
+        "tempo_gotejamento_minutos": minutos_gotejamento,
+        "tempo_aspersao": f"{h_asp}h {m_asp:02d}min",
+        "tempo_aspersao_minutos": minutos_aspersao,
+        "litros_por_planta": round(litros_por_planta, 1),
+        "volume_necessario_litros": round(volume_total_litros, 1),
+        "volume_total_m3": round(volume_total_m3, 1),
+        "volume_economizado_litros": 0.0,
+        "status_operacional": f"Ligar motobomba para aplicar {lamina_mm:.1f} mm de reposição"
+    }
+
+
+def obter_janela_horaria_ideal(temperatura_2m: float, is_organico: bool = False) -> Dict[str, str]:
+    """
+    Define a melhor janela do dia para irrigação e pulverização de defensivos/bioinsumos.
+    """
+    if temperatura_2m >= 28.0:
+        janela_irrig = "Início da manhã (06:00 às 08:00) ou fim da tarde (17:30 às 19:30). Evitar meio-dia."
+    else:
+        janela_irrig = "Entre 06:30 e 09:30 ou a partir das 16:30."
+
+    if is_organico:
+        janela_pulv = "Final da tarde (a partir das 16:30) ou dias nublados. Raios solares fortes degradam bioinsumos (Bt e Beauveria)."
+    else:
+        janela_pulv = "Início da manhã (06:00 às 08:30) com vento calmo (<10 km/h) para evitar deriva."
+
+    return {
+        "melhor_horario_irrigacao": janela_irrig,
+        "melhor_horario_pulverizacao": janela_pulv
+    }
+
+
+def mapear_pragas_cultura_ativas(cultura: str, probs_pragas: Dict[str, float]) -> List[Dict[str, Any]]:
+    """
+    Filtra as pragas e doenças reais da cultura analisada que possuem risco elevado no clima atual.
+    """
+    cultura_norm = cultura.lower().strip()
+    catalogo = CATALOGO_PRAGAS_ESPECIFICAS.get(cultura_norm, CATALOGO_PRAGAS_ESPECIFICAS["milho"])
+
+    itens_ativos = []
+
+    mapeamento_chaves = [
+        ("prob_fungos", "fungos_bacterias", "Fungos e Doenças Bacterianas"),
+        ("prob_insetos", "insetos_lagartas", "Insetos e Lagartas Mastigadoras"),
+        ("prob_acaros", "acaros_tripes", "Ácaros e Tripes (Clima Seco/Quente)"),
+        ("prob_estresse", "estresse_hidrico_salino", "Estresse Hídrico / Salinidade")
+    ]
+
+    for prob_key, cat_chave, titulo_grupo in mapeamento_chaves:
+        prob = probs_pragas.get(prob_key, 0.0)
+        nivel = "Baixo"
+        if prob >= 0.70:
+            nivel = "Alto"
+        elif prob >= 0.40:
+            nivel = "Moderado"
+
+        pragas_especificas = catalogo.get(cat_chave, [])
+        itens_ativos.append({
+            "grupo": titulo_grupo,
+            "probabilidade_pct": round(float(prob) * 100, 1),
+            "nivel_risco": nivel,
+            "relevante": nivel in ["Alto", "Moderado"],
+            "especies_principais": pragas_especificas
+        })
+
+    return itens_ativos
+

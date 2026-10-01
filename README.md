@@ -1,6 +1,6 @@
 # 🌾 AgroAlerta: Plataforma Agronômica Inteligente, IoT & Decisão por Deep Learning
 
-Sistema completo de suporte à decisão para **Agricultura de Precisão** e **Manejo Agroecológico/Convencional**, unindo **Deep Learning Multitarefa (PyTorch)**, **Georreferenciamento de Talhões via GPS**, **Operação Offline-First no Celular** e **Assistente Conversacional no Telegram com IA Generativa (LLM)**.
+Sistema completo de suporte à decisão para **Agricultura de Precisão** e **Manejo Agroecológico/Convencional**, unindo **Deep Learning Multitarefa (PyTorch)**, **Georreferenciamento de Talhões via GPS**, **Operação Offline-First no Celular** e **Síntese Prescritiva no Telegram com IA Generativa (LLM)**.
 
 O sistema atende com precisão a produtores do interior paulista (calibrado para **Rio Claro - SP** e microrregião), combinando leituras físico-químicas de sensores de solo, previsão climática em tempo real via **Open-Meteo**, zoneamento agroclimático (**ZARC**) e sazonalidade de preços do **CEAGESP**.
 
@@ -9,13 +9,14 @@ O sistema atende com precisão a produtores do interior paulista (calibrado para
 ## 📌 Sumário
 1. [Principais Inovações e Funcionalidades](#-principais-inovações-e-funcionalidades)
 2. [Fluxo Operacional de Campo](#-fluxo-operacional-de-campo)
-3. [Arquitetura da Rede Neural Multitarefa](#-arquitetura-da-rede-neural-multitarefa)
-4. [Diferenciação para Produtores Orgânicos](#-diferenciação-para-produtores-orgânicos)
-5. [Adaptação Regional para Rio Claro - SP](#-adaptação-regional-para-rio-claro---sp)
-6. [Assistente no Telegram com LLM](#-assistente-no-telegram-com-llm)
-7. [Estrutura do Repositório](#-estrutura-do-repositório)
-8. [Resultados e Métricas de Validação](#-resultados-e-métricas-de-validação)
-9. [Guia de Instalação e Execução](#-guia-de-instalação-e-execução)
+3. [Saída Enriquecida & Síntese Prescritiva por LLM](#-saída-enriquecida--síntese-prescritiva-por-llm)
+4. [Arquitetura da Rede Neural Multitarefa](#-arquitetura-da-rede-neural-multitarefa)
+5. [Diferenciação para Produtores Orgânicos](#-diferenciação-para-produtores-orgânicos)
+6. [Adaptação Regional para Rio Claro - SP](#-adaptação-regional-para-rio-claro---sp)
+7. [Assistente no Telegram com LLM](#-assistente-no-telegram-com-llm)
+8. [Estrutura do Repositório](#-estrutura-do-repositório)
+9. [Resultados e Métricas de Validação](#-resultados-e-métricas-de-validação)
+10. [Guia de Instalação e Execução](#-guia-de-instalação-e-execução)
 
 ---
 
@@ -35,15 +36,13 @@ O sistema atende com precisão a produtores do interior paulista (calibrado para
 - **Fila de Sincronização Resiliente:** Se o produtor estiver em um ponto da lavoura sem cobertura 3G/4G, os dados continuam acumulados com segurança;
 - **Sincronização e Limpeza Automática:** Assim que o dispositivo detecta sinal de internet (`online`), ele sincroniza em lote com o banco de dados e **esvazia/limpa a fila local**.
 
-### 4. Assistente de Campo no Telegram com Tom Humanizado (LLM)
-- Cada nova leitura analisada gera um boletim claro no Telegram do produtor;
-- Integração com **Google Gemini** e gerador nativo com tom empático de homem do campo:
-  - Responde perguntas livres do produtor (*"Preciso regar meu milho hoje?"*, *"O que devo plantar agora em outubro?"*);
-  - Traduz dados técnicos frios em orientações práticas com emojis e linguagem clara.
+### 4. Cálculo da Área Total do Talhão e Dimensionamento em Litros
+- A partir dos 3 ou 4 vértices georreferenciados, o sistema calcula a **área real do talhão em hectares** através da fórmula de Gauss (Shoelace);
+- O motor agronômico dimensiona com precisão matemática a **litragem total necessária para irrigar toda a área** ($V = \text{Lâmina (mm)} \times 10.000 \times \text{área (ha)}$) e a **economia real de água poupada** em litros quando a rega é suspensa (por chuva iminente ou umidade adequada no solo).
 
-### 5. Motor de Recomendação de Culturas e Sazonalidade (ZARC + CEAGESP)
-- Avalia o solo da gleba, o calendário agroclimático de Rio Claro - SP e as cotações históricas do CEAGESP;
-- Prescreve: **O que plantar**, **Como plantar** (espaçamento, profundidade e adubação orgânica/mineral) e **Qual o melhor período**.
+### 5. Separação Estrita de Arquitetura: Rede Neural (Dados Limpos) vs LLM (Texto Prescritivo)
+- **Rede Neural Multitarefa & Motor Analítico:** Responsáveis por uma **saída simples, limpa e enxuta (JSON estruturado)** contendo apenas métricas numéricas puras, classes, probabilidades de irrigação e pragas, tempos operacionais de bomba e dimensionamento hídrico por hectare. Não gera textos dissertativos longos estáticos.
+- **Camada de LLM (Google Gemini / Fallback Empático):** Responsável exclusivo por **gerar a resposta em texto corrido, humanizado e explicativo** para o produtor rural, traduzindo as variáveis técnicas em uma conversa direta sobre o que fazer no campo, o total de litros envolvidos e orientações práticas de manejo.
 
 ---
 
@@ -64,17 +63,87 @@ flowchart TD
         D -->|Leitura física| H[pH, Umidade, NPK, Condutividade, Compactação]
     end
 
-    subgraph ETAPA 3: INTELIGÊNCIA ARTIFICIAL E TELEGRAM
+    subgraph ETAPA 3: INTELIGÊNCIA ARTIFICIAL E ENRIQUECIMENTO
         E -->|Coordenadas| I[Open-Meteo Clima em Tempo Real]
         G --> J[AgroDataEngine: Vetor 32 Features]
         H --> J
         I --> J
         J --> K[AgroMultitaskNet PyTorch]
         K --> L[Decisão de Irrigação + Lâmina mm + Riscos de Pragas]
-        L --> M[Filtro de Insumos Orgânicos / Convencionais]
-        M --> N[Adaptador LLM: Humanização de Tom]
-        N --> O[Disparo no Telegram do Produtor 📱]
+        L --> M[Enriquecedor Agronômico: Tempo em Horas, Pragas Específicas, Janelas]
     end
+
+    subgraph ETAPA 4: SÍNTESE PRESCRITIVA POR LLM
+        M --> N[Adaptador LLM llm_adapter.py]
+        N --> O[Google Gemini API / Fallback Empático]
+        O --> P["Texto Humanizado: 'O Que Fazer Hoje no Talhão'"]
+        P --> Q[Disparo no Telegram do Produtor 📱]
+        P --> R[Exibição na Tela do Celular / Web 💻]
+    end
+```
+
+---
+
+## 📋 Saída Simples da Rede Neural & Síntese Prescritiva por LLM
+
+A arquitetura adota a **separação estrita de responsabilidades**:
+1. A **Rede Neural** gera uma estrutura de dados simples, limpa e enxuta (JSON com métricas físicas, probabilidades e dimensionamento por hectare);
+2. O **LLM** consome esses dados numéricos e redige a orientação acolhedora, explicativa e humanizada para o produtor rural.
+
+### 1. Saída Simples da Rede Neural (JSON Analítico Enxuto):
+```json
+{
+  "talhao": {
+    "area_ha": 4.5,
+    "cultura": "citros",
+    "regime": "Cultivo Orgânico Certificado"
+  },
+  "decisao_irrigacao": {
+    "classe_codigo": 1,
+    "status": "Irrigar Leve/Moderada (Reposição de Déficit)",
+    "lamina_mm": 2.31
+  },
+  "metricas_hidricas_area": {
+    "volume_necessario_litros": 103950.0,
+    "tempo_gotejamento_minutos": 50,
+    "tempo_aspersao_minutos": 21,
+    "litros_por_planta": 51.3
+  },
+  "riscos_fitossanitarios": [
+    {
+      "alerta": "Risco de Insetos e Lagartas Mastigadoras",
+      "prob_pct": 46.8,
+      "nivel": "Moderado"
+    }
+  ]
+}
+```
+
+### 2. Resposta em Texto Gerada pelo LLM para o Celular / Telegram:
+```text
+👨‍🌾 Prescrição do Campo — AgroAlerta
+📍 Talhão de Citros (~4.50 ha) | Cultivo Orgânico Certificado 🌱
+
+🚀 1. O QUE FAZER NA IRRIGAÇÃO AGORA:
+• LIGAR IRRIGAÇÃO: Aplicar lâmina de 2.3 mm de reposição hídrica.
+  💧 Volume Total da Área: ~103,950 litros de água para os 4.50 hectares.
+  ⏱️ Tempo de Gotejamento: 0h 50min
+  ⏱️ Tempo de Aspersão: 0h 21min
+  🥤 Dose: ~51.3 litros por planta.
+  ⏰ Melhor Horário: Início da manhã (06:00 às 08:00) ou fim da tarde (17:30 às 19:30). Evitar meio-dia.
+
+🔍 2. O QUE VISTORIAR NO SEU CITROS:
+• Alerta de Insetos e Lagartas Mastigadoras (Risco Moderado - 46.8%):
+  ⚠️ Psilídeo (Diaphorina citri) - VETOR DO GREENING/HLB: Olhar nas folhas para ver se há: Insetos jovens nos brotos novos; transmissão irreversível da pior doença citrícola.
+  ⚠️ Bicho-Furão (Gymnandrosoma aurantianum): Olhar nas folhas para ver se há: Lagartas perfurando a polpa do fruto causando queda prematura.
+
+🌿 3. RECEITA E MANEJO PRÁTICO (ORGÂNICO):
+⏰ Janela de Aplicação: Final da tarde (a partir das 16:30) ou dias nublados. Raios solares fortes degradam bioinsumos (Bt e Beauveria).
+• Aplicação de inseticida biológico à base de Bacillus thuringiensis (Bt) - estirpes kurstaki
+• Pulverização de Óleo de Neem 100% puro prensado a frio (0.5% a 1.0% de calda)
+• Instalação de armadilhas luminosas e feromônios específicos de captura
+
+💡 Por que tomamos essa decisão: O déficit hídrico calculado para a área de 4.50 ha é de 2.3 mm, considerando a demanda evaporativa do ar de 5.2 mm e a fase fenológica da planta.
 ```
 
 ---
@@ -83,7 +152,7 @@ flowchart TD
 
 Construída em **PyTorch** ([`Rede Neural/model_multitask.py`](Rede%20Neural/model_multitask.py)), utiliza a abordagem de **Hard Parameter Sharing (Tronco Compartilhado)** com **~55.944 parâmetros treináveis**:
 
-* **Entrada (32 Features):** 23 variáveis numéricas contínuas padronizadas via `StandardScaler` + One-Hot Encoding de tipos de solo (incluindo *Latossolo Vermelho*) + One-Hot de culturas (incluindo *Citros* e *Cana*) + flag binária `is_organico`.
+* **Entrada (32 Features):** 23 variáveis numéricas contínuas padronizadas via `StandardScaler` + One-Hot Encoding de solos (incluindo *Latossolo Vermelho*) + One-Hot de culturas (incluindo *Citros* e *Cana*) + flag binária `is_organico`.
 * **Tronco Compartilhado (Backbone):**
   - Bloco 1: `Linear(32 -> 256)` + `BatchNorm1d(256)` + `ReLU` + `Dropout(0.30)`
   - Bloco 2: `Linear(256 -> 128)` + `BatchNorm1d(128)` + `ReLU` + `Dropout(0.20)`
@@ -127,26 +196,28 @@ O bot do Telegram ([`backend/bot.py`](backend/bot.py)) aproxima a tecnologia do 
 
 ```text
 ├── README.md                      # Documentação técnica completa
-├── test_integration_complete.py   # Bateria de testes de integração automatizados
+├── requirements.txt               # Dependências do projeto para pip
+├── test_integration_complete.py   # Bateria de 6 testes de integração automatizados
 │
 ├── backend/                       # Serviços de Backend e Telegram
 │   ├── bot.py                     # Bot interativo do Telegram com handlers
-│   ├── llm_adapter.py             # Integração com Gemini API e tom humanizado
-│   ├── geo_engine.py              # Algoritmo Ray-Casting Point-in-Polygon
+│   ├── llm_adapter.py             # Síntese prescritiva via Gemini API e fallback empático
+│   ├── geo_engine.py              # Algoritmo Ray-Casting Point-in-Polygon e cálculo Shoelace
 │   ├── db_manager.py              # Persistência híbrida (Supabase / SQLite local)
-│   ├── server.py                  # API REST Flask para sincronização offline
+│   ├── server.py                  # API REST Flask com resposta de prescrição LLM
 │   └── config.exemplo.py          # Modelo de configuração para tokens e chaves
 │
 ├── frontend/                      # Web App Mobile Offline-First
-│   ├── index.html                 # Interface com abas de Coleta, Marcação e Safra
+│   ├── index.html                 # Interface com Coleta, Marcação e Prescrição LLM
 │   └── mock_esp32.py              # Emulador local de leituras de sensores IoT
 │
 ├── Rede Neural/                   # Módulos de Deep Learning e Agronomia
-│   ├── agronomy_rules.py          # Perfis de solo, culturas, FAO-56 e bioinsumos
+│   ├── agronomy_rules.py          # Perfis de solo, culturas, pragas específicas e FAO-56
 │   ├── data_engine.py             # Vetorização e processamento 100% NumPy
 │   ├── model_multitask.py         # Arquitetura da AgroMultitaskNet em PyTorch
 │   ├── train_pipeline.py          # Treinamento com AdamW e avaliação multitarefa
-│   ├── agro_system.py             # Motor de predição e formulação de relatórios
+│   ├── agro_system.py             # Motor de predição e formulação da saída analítica simples
+│   ├── demo_run.py                # Script de demonstração dos cenários e síntese por LLM
 │   ├── crop_recommendation.py     # Motor ZARC / Sazonalidade CEAGESP
 │   ├── weather_client.py          # Cliente Open-Meteo com cache e retries
 │   ├── best_agro_multitask.pth    # Pesos treinados do modelo
@@ -175,26 +246,30 @@ Avaliação realizada em conjunto de teste cego ($5.000$ amostras independentes)
 
 ## 🛠️ Guia de Instalação e Execução
 
-### 1. Pré-requisitos
-- Python 3.10 ou superior;
-- Instalar dependências:
-  ```bash
-  pip install torch torchvision pandas scikit-learn requests python-telegram-bot flask flask-cors
-  ```
+### 1. Instalar Dependências
+```bash
+pip install -r requirements.txt
+```
 
 ### 2. Configurar Credenciais
-Copie o arquivo de exemplo e insira seu token do Telegram e chave do Gemini:
+Copie o arquivo de exemplo e insira seu token do Telegram e chave do Gemini (se desejar usar a API do Google; caso contrário, o sistema utilizará o gerador local embutido):
 ```bash
 cp backend/config.exemplo.py backend/config.py
 ```
 
-### 3. Executar os Testes de Integração
-Valide todos os módulos de ponta a ponta:
+### 3. Executar Demonstração Completa do Sistema
+Veja a Rede Neural e o LLM operando em 3 cenários práticos (Citros em 4.5 ha com reposição em litros, Tomate em 2.3 ha com trava de chuva e economia de água, e Planejamento de Safra ZARC):
+```bash
+python "Rede Neural/demo_run.py"
+```
+
+### 4. Executar os Testes de Integração
+Valide todos os 6 módulos de ponta a ponta:
 ```bash
 python test_integration_complete.py
 ```
 
-### 4. Iniciar o Servidor API e a Interface Mobile
+### 5. Iniciar o Servidor API e o Bot do Telegram
 ```bash
 # Terminal 1: Iniciar servidor REST
 python backend/server.py
@@ -202,4 +277,4 @@ python backend/server.py
 # Terminal 2: Iniciar o Bot do Telegram
 python backend/bot.py --poll
 ```
-Abra `frontend/index.html` no navegador do celular ou computador para delimitar seus talhões e realizar coletas de solo!
+Abra `frontend/index.html` no navegador do celular ou computador para delimitar seus talhões, realizar coletas de solo e receber a prescrição imediata da IA!

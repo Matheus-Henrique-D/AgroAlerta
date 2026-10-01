@@ -1,0 +1,29 @@
+# =============================================================================
+# AgroAlerta — Dependências do Sistema (Python >= 3.10)
+# =============================================================================
+
+# Deep Learning, Processamento Científico e Machine Learning
+torch>=2.0.0
+numpy>=1.24.0
+pandas>=2.0.0
+scikit-learn>=1.3.0
+scipy>=1.10.0
+
+# Backend, Servidor REST e Utilitários Web
+flask>=3.0.0
+flask-cors>=4.0.0
+requests>=2.31.0
+httpx>=0.27.0
+
+# Bot do Telegram
+python-telegram-bot>=20.0
+
+# Banco de Dados e Conectores (PostgreSQL / Supabase / SQLite)
+SQLAlchemy>=2.0.0
+psycopg2-binary>=2.9.0
+supabase>=2.0.0
+
+# Cliente Agrometeorológico Oficial Open-Meteo (Opcional - com fallback nativo)
+openmeteo-requests>=1.1.0
+requests-cache>=1.1.0
+retry-requests>=2.0.0

@@ -4,8 +4,9 @@ __pycache__/
 *$py.class
 .cache_weather/
 
-# Bancos de dados locais de teste
+# Bancos de dados locais de teste e caches
 *.db
+*.sqlite
 backend/agroalerta_local.db
 
 # Modelos legados e ambientes virtuais

@@ -18,7 +18,10 @@ from agronomy_rules import (
     CULTURAS_CONFIG,
     SOLO_CONFIG,
     MANEJO_CATALOGO,
-    diagnosticar_solo
+    diagnosticar_solo,
+    calcular_detalhes_operacionais_irrigacao,
+    obter_janela_horaria_ideal,
+    mapear_pragas_cultura_ativas
 )
 from weather_client import get_weather_features
 from data_engine import AgroDataEngine
@@ -81,10 +84,13 @@ class AgroDecisionSystem:
         lon: float,
         cultura: str,
         is_organico: bool,
-        dados_arduino: Dict[str, Any]
+        dados_arduino: Dict[str, Any],
+        area_ha: float = 1.0
     ) -> Dict[str, Any]:
         """
-        Executa a predição completa do sistema para um talhão agrícola.
+        Executa a predição analítica completa da Rede Neural para um talhão agrícola.
+        Retorna uma estrutura de dados JSON simples, limpa e enxuta com métricas
+        operacionais proporcionais à área total do talhão (hectares).
         """
         cultura_norm = cultura.lower().strip()
         if cultura_norm not in CULTURAS_CONFIG:
@@ -167,7 +173,19 @@ class AgroDecisionSystem:
                 "nivel_alerta": nivel
             })
 
-        # 6. Diagnóstico do Solo
+        # 6. Detalhes Operacionais e Pragas Específicas por Área
+        detalhes_irrig = calcular_detalhes_operacionais_irrigacao(volume_mm_final, cultura_norm, area_ha=area_ha)
+        janelas_horarias = obter_janela_horaria_ideal(dados_clima["temperature_2m"], is_organico)
+
+        dict_probs = {
+            "prob_fungos": float(probs_pragas[0]),
+            "prob_insetos": float(probs_pragas[1]),
+            "prob_acaros": float(probs_pragas[2]),
+            "prob_estresse": float(probs_pragas[3])
+        }
+        pragas_especificas = mapear_pragas_cultura_ativas(cultura_norm, dict_probs)
+
+        # 7. Diagnóstico do Solo
         diag_solo = diagnosticar_solo(
             ph=float(dados_arduino.get("pH", 6.5)),
             nitrogenio=float(dados_arduino.get("nitrogenio_N_ppm", 4.0)),
@@ -177,7 +195,7 @@ class AgroDecisionSystem:
             compactacao=float(dados_arduino.get("compactacao_solo_kPa", 1500.0))
         )
 
-        # 7. Formulação do Plano de Ação Personalizado (Orgânico vs Convencional)
+        # 8. Formulação do Plano de Ação Personalizado (Orgânico vs Convencional)
         tipo_manejo = "organico" if is_organico else "convencional"
         catalogo_manejo = MANEJO_CATALOGO[tipo_manejo]
 
@@ -200,14 +218,15 @@ class AgroDecisionSystem:
         # Remove duplicatas mantendo a ordem
         recomendacoes_praticas = list(dict.fromkeys(recomendacoes_praticas))
 
-        # 8. Estruturação do Relatório Final
+        # 9. Estruturação do Relatório Analítico da Rede Neural (Saída Simples / JSON Estruturado)
         relatorio = {
             "meta": {
                 "coordenadas": {"latitude": lat, "longitude": lon},
                 "cultura": cultura_norm,
                 "kc_cultura": CULTURAS_CONFIG[cultura_norm].kc,
                 "regime_cultivo": "Cultivo Orgânico Certificado" if is_organico else "Cultivo Convencional",
-                "tipo_solo": tipo_solo
+                "tipo_solo": tipo_solo,
+                "area_ha": round(float(area_ha), 3)
             },
             "decisao_irrigacao": {
                 "classe_codigo": classe_irrig_final,
@@ -220,8 +239,32 @@ class AgroDecisionSystem:
                 },
                 "trava_seguranca_meteorologica": {
                     "acionada": trava_chuva_acionada,
-                    "justificativa": motivo_irrig
+                    "justificativa": motivo_irrig,
+                    "probabilidade_chuva_6h_pct": dados_clima["precipitation_probability_max_6h"],
+                    "chuva_prevista_6h_mm": dados_clima["rain_sum_6h"]
                 }
+            },
+            "metricas_hidricas_talhao": {
+                "area_ha": round(float(area_ha), 3),
+                "volume_necessario_litros": detalhes_irrig.get("volume_necessario_litros", 0.0),
+                "volume_economizado_litros": detalhes_irrig.get("volume_economizado_litros", 0.0),
+                "volume_total_m3": detalhes_irrig.get("volume_total_m3", 0.0),
+                "tempo_gotejamento_minutos": detalhes_irrig["tempo_gotejamento_minutos"],
+                "tempo_aspersao_minutos": detalhes_irrig["tempo_aspersao_minutos"],
+                "litros_por_planta": detalhes_irrig["litros_por_planta"],
+                "melhor_horario_irrigacao": janelas_horarias["melhor_horario_irrigacao"],
+                "melhor_horario_pulverizacao": janelas_horarias["melhor_horario_pulverizacao"]
+            },
+            "orientacoes_operacionais": {
+                "tempo_gotejamento": detalhes_irrig["tempo_gotejamento"],
+                "tempo_gotejamento_minutos": detalhes_irrig["tempo_gotejamento_minutos"],
+                "tempo_aspersao": detalhes_irrig["tempo_aspersao"],
+                "tempo_aspersao_minutos": detalhes_irrig["tempo_aspersao_minutos"],
+                "litros_por_planta": detalhes_irrig["litros_por_planta"],
+                "volume_necessario_litros": detalhes_irrig.get("volume_necessario_litros", 0.0),
+                "volume_economizado_litros": detalhes_irrig["volume_economizado_litros"],
+                "melhor_horario_irrigacao": janelas_horarias["melhor_horario_irrigacao"],
+                "melhor_horario_pulverizacao": janelas_horarias["melhor_horario_pulverizacao"]
             },
             "analise_microclimatica_open_meteo": {
                 "temperatura_2m_celsius": dados_clima["temperature_2m"],
@@ -236,6 +279,7 @@ class AgroDecisionSystem:
                 "velocidade_vento_10m_kmh": dados_clima["wind_speed_10m"]
             },
             "alertas_risco_patogenos": alertas_risco,
+            "pragas_especificas_cultura": pragas_especificas,
             "diagnostico_quimico_fisico_solo": diag_solo,
             "plano_de_acao_prescritivo": {
                 "enquadramento_legal": "Insumos permitidos conforme Lei Orgânica 10.831 / MAPA" if is_organico else "Manejo Químico Integrado de Pragas (MIP)",
@@ -264,10 +308,12 @@ def predict_agro_system(
     lon: float,
     cultura: str,
     is_organico: bool,
-    dados_arduino_dict: Dict[str, Any]
+    dados_arduino_dict: Dict[str, Any],
+    area_ha: float = 1.0
 ) -> Dict[str, Any]:
     """
-    Função principal de alto nível para predição agroclimática.
+    Função principal de alto nível para inferência pela Rede Neural.
+    Retorna métricas agronômicas estruturadas e volume hídrico em escala da área.
     """
     global _agro_system_instance
     if _agro_system_instance is None:
@@ -278,7 +324,8 @@ def predict_agro_system(
         lon=lon,
         cultura=cultura,
         is_organico=is_organico,
-        dados_arduino=dados_arduino_dict
+        dados_arduino=dados_arduino_dict,
+        area_ha=area_ha
     )
     return resultado
 

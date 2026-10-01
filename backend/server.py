@@ -27,6 +27,7 @@ from db_manager import db_manager
 from geo_engine import ponto_no_poligono, calcular_centroide_e_area_hectares, identificar_talhao
 from crop_recommendation import recomendar_culturas_para_produtor
 from bot import notificar_analise_leitura, processar_mensagem_produtor
+from llm_adapter import gerar_texto_prescritivo_llm
 
 # Importa o sistema de IA da Rede Neural
 try:
@@ -111,6 +112,7 @@ def registrar_leitura():
     is_organico = talhao["is_organico"] if talhao else bool(dados.get("is_organico", False))
     talhao_id = talhao["id"] if talhao else None
     talhao_nome = talhao["nome_talhao"] if talhao else "Área Não Delimitada"
+    area_ha = float(talhao.get("area_ha", 1.0)) if (talhao and talhao.get("area_ha")) else float(dados.get("area_ha", 1.0))
 
     # Salva no banco de dados
     leitura_id = db_manager.salvar_leitura_solo(
@@ -124,6 +126,7 @@ def registrar_leitura():
 
     # Executa a inferência pela Rede Neural Multitarefa
     relatorio_ia = None
+    texto_llm = None
     if HAS_AI:
         try:
             relatorio_ia = predict_agro_system(
@@ -131,8 +134,10 @@ def registrar_leitura():
                 lon=lon,
                 cultura=cultura,
                 is_organico=is_organico,
-                dados_arduino_dict=dados
+                dados_arduino_dict=dados,
+                area_ha=area_ha
             )
+            texto_llm = gerar_texto_prescritivo_llm(relatorio_ia)
             # Notifica o produtor via Telegram com linguagem humanizada
             notificar_analise_leitura(chat_id, relatorio_ia)
         except Exception as e:
@@ -144,7 +149,8 @@ def registrar_leitura():
         "talhao_nome": talhao_nome,
         "cultura": cultura,
         "is_organico": is_organico,
-        "relatorio_ia": relatorio_ia
+        "relatorio_ia": relatorio_ia,
+        "texto_prescritivo_llm": texto_llm
     }), 201
 
 
@@ -184,6 +190,7 @@ def sincronizar_lote():
             talhao = identificar_talhao(lat, lon, db_manager.listar_talhoes(chat_id))
             cultura = talhao["cultura"] if talhao else l.get("cultura", "milho")
             is_organico = talhao["is_organico"] if talhao else bool(l.get("is_organico", False))
+            area_ha = float(talhao.get("area_ha", 1.0)) if (talhao and talhao.get("area_ha")) else float(l.get("area_ha", 1.0))
 
             db_manager.salvar_leitura_solo(
                 chat_id=chat_id,
@@ -195,7 +202,7 @@ def sincronizar_lote():
             )
 
             if HAS_AI:
-                rel = predict_agro_system(lat, lon, cultura, is_organico, l)
+                rel = predict_agro_system(lat, lon, cultura, is_organico, l, area_ha=area_ha)
                 notificar_analise_leitura(chat_id, rel)
 
             leituras_salvas += 1

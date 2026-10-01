@@ -113,7 +113,25 @@ class TestAgroAlertaIntegracao(unittest.TestCase):
         self.assertIn("decisao_irrigacao", relatorio)
         self.assertIn("alertas_risco_patogenos", relatorio)
         self.assertIn("Cultivo Orgânico", relatorio["meta"]["regime_cultivo"])
-        print(f"-> Teste IA: Status Irrigação = {relatorio['decisao_irrigacao']['status']} | Volume = {relatorio['decisao_irrigacao']['volume_agua_recomendado_mm']} mm")
+        self.assertIn("orientacoes_operacionais", relatorio)
+        self.assertIn("pragas_especificas_cultura", relatorio)
+
+        operacional = relatorio["orientacoes_operacionais"]
+        self.assertIn("tempo_gotejamento", operacional)
+        self.assertIn("melhor_horario_irrigacao", operacional)
+        self.assertIn("metricas_hidricas_talhao", relatorio)
+        self.assertIn("volume_economizado_litros", operacional)
+
+        # Verifica se as pragas específicas de Citros foram mapeadas
+        pragas_esp = relatorio["pragas_especificas_cultura"]
+        tem_psilideo_ou_cancro = any(
+            any("Psilídeo" in p["nome"] or "Cancro" in p["nome"] for p in g.get("especies_principais", []))
+            for g in pragas_esp
+        )
+        self.assertTrue(tem_psilideo_ou_cancro, "O catálogo específico de Citros deve conter Psilídeo ou Cancro Cítrico")
+
+        print(f"-> Teste IA Enriquecida: Status = {relatorio['decisao_irrigacao']['status']} | Rega Gotejamento = {operacional['tempo_gotejamento']}")
+        print(f"   Janela de Irrigação = {operacional['melhor_horario_irrigacao']}")
 
     def test_04_recomendacao_safra_rio_claro(self):
         """Valida o motor de recomendação ZARC/Preços CEAGESP."""
@@ -137,6 +155,37 @@ class TestAgroAlertaIntegracao(unittest.TestCase):
         resp_duvida = processar_mensagem_produtor("7858612258", "Preciso regar meu talhão hoje?")
         self.assertTrue(len(resp_duvida) > 20)
         print(f"-> Teste Bot Telegram: Resposta gerada com sucesso:\n{resp_duvida[:150]}...")
+
+    def test_06_sintese_prescritiva_llm(self):
+        """Valida a geração da síntese prescritiva completa pelo LLM a partir da saída enriquecida."""
+        from llm_adapter import gerar_texto_prescritivo_llm
+
+        sensor_leitura = {
+            "pH": 6.1,
+            "teor_umildade_%": 18.0,  # umidade mais baixa para exigir irrigação
+            "nitrogenio_N_ppm": 3.0,
+            "fosforo_P_ppm": 2.5,
+            "potassio_K_ppm": 2.0,
+            "condutividade_eletrica_dS_m": 0.9,
+            "compactacao_solo_kPa": 1350.0,
+            "tipo_solo": "latossolo_vermelho"
+        }
+        relatorio = predict_agro_system(
+            lat=-22.4114,
+            lon=-47.5614,
+            cultura="citros",
+            is_organico=True,
+            dados_arduino_dict=sensor_leitura
+        )
+
+        texto_prescritivo = gerar_texto_prescritivo_llm(relatorio)
+        self.assertIn("O QUE FAZER NA IRRIGAÇÃO", texto_prescritivo)
+        self.assertIn("O QUE VISTORIAR", texto_prescritivo)
+        self.assertIn("RECEITA E MANEJO", texto_prescritivo)
+        self.assertIn("Citros", texto_prescritivo)
+        self.assertIn("Psilídeo", texto_prescritivo)
+        print(f"\n-> Teste Síntese LLM: Texto prescritivo gerado com sucesso (Tamanho: {len(texto_prescritivo)} chars):")
+        print(texto_prescritivo[:350] + "\n...")
 
 
 if __name__ == "__main__":
