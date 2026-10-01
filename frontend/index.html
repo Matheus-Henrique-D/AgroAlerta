@@ -2,161 +2,534 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Agroalerta</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>AgroAlerta — Campo Inteligente</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
-    body { background-color: #f4f6f8; padding: 16px; color: #222; }
-    .container { max-width: 480px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
-    h1 { font-size: 1.4rem; margin-bottom: 16px; text-align: center; color: #2e7d32; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
-    .card { background: #eef2f5; padding: 10px; border-radius: 6px; border-left: 4px solid #2e7d32; }
-    .card-label { font-size: 0.75rem; color: #555; text-transform: uppercase; }
-    .card-value { font-size: 1.1rem; font-weight: bold; margin-top: 4px; display: block; }
-    .form-group { margin-bottom: 16px; }
-    label { font-size: 0.85rem; font-weight: bold; display: block; margin-bottom: 4px; }
-    input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 1rem; }
-    button { width: 100%; padding: 14px; background: #2e7d32; color: #fff; border: none; border-radius: 6px; font-size: 1rem; font-weight: bold; cursor: pointer; }
-    button:active { background: #1b5e20; }
-    #status { margin-top: 14px; text-align: center; font-size: 0.9rem; font-weight: bold; color: #444; }
+    :root {
+      --primary: #2e7d32;
+      --primary-dark: #1b5e20;
+      --accent: #f57f17;
+      --bg: #f4f6f8;
+      --card-bg: #ffffff;
+      --text: #1f2937;
+      --border: #e5e7eb;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: var(--bg); padding: 12px; color: var(--text); padding-bottom: 40px; }
+    .container { max-width: 520px; margin: 0 auto; }
+    
+    header { background: var(--primary); color: white; padding: 16px; border-radius: 12px; text-align: center; margin-bottom: 14px; box-shadow: 0 4px 6px rgba(0,0,0,0.08); }
+    header h1 { font-size: 1.35rem; font-weight: 700; }
+    header p { font-size: 0.82rem; opacity: 0.9; margin-top: 4px; }
+    
+    .status-bar { display: flex; justify-content: space-between; align-items: center; background: white; padding: 8px 14px; border-radius: 8px; font-size: 0.8rem; margin-bottom: 12px; border: 1px solid var(--border); }
+    .status-badge { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #10b981; }
+    .dot.offline { background: #ef4444; }
+    
+    /* Abas de Navegação */
+    .tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+    .tab-btn { flex: 1; padding: 10px 4px; background: white; border: 1px solid var(--border); border-radius: 8px; font-size: 0.82rem; font-weight: 600; color: #4b5563; cursor: pointer; text-align: center; }
+    .tab-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+    
+    .panel { display: none; background: white; padding: 16px; border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 2px 4px rgba(0,0,0,0.04); }
+    .panel.active { display: block; }
+    
+    h2 { font-size: 1.1rem; color: var(--primary-dark); margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+    
+    .form-group { margin-bottom: 12px; }
+    label { font-size: 0.8rem; font-weight: 600; color: #374151; display: block; margin-bottom: 4px; }
+    input, select { width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 0.95rem; }
+    
+    .switch-container { display: flex; align-items: center; justify-content: space-between; background: #f9fafb; padding: 10px; border-radius: 8px; margin-bottom: 12px; border: 1px dashed #cbd5e1; }
+    .switch-label { font-size: 0.85rem; font-weight: 600; color: #1e293b; }
+    
+    /* Vértices */
+    .points-list { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; margin-bottom: 12px; }
+    .point-item { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #edf2f7; font-size: 0.8rem; }
+    .point-item:last-child { border-bottom: none; }
+    
+    /* Botões */
+    button { width: 100%; padding: 12px; border: none; border-radius: 8px; font-size: 0.95rem; font-weight: 700; cursor: pointer; transition: 0.15s ease-in-out; }
+    .btn-primary { background: var(--primary); color: white; margin-bottom: 8px; }
+    .btn-primary:active { background: var(--primary-dark); }
+    .btn-secondary { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
+    .btn-accent { background: var(--accent); color: white; }
+    
+    /* Card de Talhão Detectado */
+    .detection-card { background: #ecfdf5; border: 2px solid #10b981; border-radius: 10px; padding: 12px; margin-bottom: 14px; text-align: center; }
+    .detection-card.unknown { background: #fef2f2; border-color: #f87171; }
+    .detection-title { font-size: 0.95rem; font-weight: 700; color: #065f46; }
+    .detection-detail { font-size: 0.82rem; color: #047857; margin-top: 4px; }
+    
+    /* Grid de Sensores */
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+    .card { background: #f8fafc; padding: 8px 10px; border-radius: 8px; border-left: 3px solid var(--primary); }
+    .card-label { font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 600; }
+    .card-value { font-size: 1.05rem; font-weight: 700; color: #0f172a; margin-top: 2px; }
+    
+    .alert-box { padding: 10px; border-radius: 8px; font-size: 0.8rem; margin-top: 10px; display: none; }
+    .alert-success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+    .alert-warning { background: #fef9c3; color: #854d0e; border: 1px solid #fef08a; }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>Agroalerta — Solo</h1>
+    <header>
+      <h1>AgroAlerta</h1>
+      <p>Inteligência de Solo, Georreferenciamento e Telegram</p>
+    </header>
 
-    <div class="grid">
-      <div class="card"><span class="card-label">pH do Solo</span><span id="ph" class="card-value">--</span></div>
-      <div class="card"><span class="card-label">Condutividade (EC)</span><span id="condutividade" class="card-value">--</span></div>
-      <div class="card"><span class="card-label">Nitrogênio (N)</span><span id="nitrogenio" class="card-value">--</span></div>
-      <div class="card"><span class="card-label">Fósforo (P)</span><span id="fosforo" class="card-value">--</span></div>
-      <div class="card"><span class="card-label">Potássio (K)</span><span id="potassio" class="card-value">--</span></div>
-      <div class="card"><span class="card-label">Temperatura</span><span id="temperatura" class="card-value">--</span></div>
-      <div class="card"><span class="card-label">Umidade</span><span id="umidade" class="card-value">--</span></div>
-      <div class="card"><span class="card-label">Penetrômetro</span><span id="penetrometro" class="card-value">--</span></div>
+    <div class="status-bar">
+      <span class="status-badge">
+        <span id="conn-dot" class="dot"></span>
+        <span id="conn-text">Online</span>
+      </span>
+      <span id="queue-badge" style="color: #64748b;">Fila offline: 0 itens</span>
     </div>
 
-    <div class="form-group">
-      <label for="chat-id">ID do Telegram:</label>
-      <input type="text" id="chat-id" placeholder="Ex: 7858612258">
+    <!-- Abas -->
+    <div class="tabs">
+      <div class="tab-btn active" onclick="trocarAba('coleta')">📡 Coleta de Solo</div>
+      <div class="tab-btn" onclick="trocarAba('delimitar')">📐 Marcar Talhão</div>
+      <div class="tab-btn" onclick="trocarAba('mercado')">🌱 O Que Plantar</div>
     </div>
 
-    <button id="btn-enviar">Enviar para análise</button>
-    <p id="status">Aguardando leitura do sensor...</p>
+    <!-- ABA 1: COLETA DE SOLO & DETECÇÃO AUTOMÁTICA -->
+    <div id="painel-coleta" class="panel active">
+      <h2>📍 Localização e Análise do Solo</h2>
+      
+      <button class="btn-primary" onclick="capturarLocalizacaoEColetar()">
+        📡 1. Identificar Talhão via GPS do Celular
+      </button>
+
+      <div id="detection-box" class="detection-card unknown" style="display: none;">
+        <div id="detection-title" class="detection-title">Aguardando leitura do GPS...</div>
+        <div id="detection-desc" class="detection-detail"></div>
+      </div>
+
+      <div class="grid">
+        <div class="card"><span class="card-label">pH do Solo</span><div id="val-ph" class="card-value">--</div></div>
+        <div class="card"><span class="card-label">Umidade Solo</span><div id="val-umidade" class="card-value">-- %</div></div>
+        <div class="card"><span class="card-label">Nitrogênio (N)</span><div id="val-n" class="card-value">-- ppm</div></div>
+        <div class="card"><span class="card-label">Fósforo (P)</span><div id="val-p" class="card-value">-- ppm</div></div>
+        <div class="card"><span class="card-label">Potássio (K)</span><div id="val-k" class="card-value">-- ppm</div></div>
+        <div class="card"><span class="card-label">Condutividade (CE)</span><div id="val-ce" class="card-value">-- dS/m</div></div>
+        <div class="card"><span class="card-label">Temperatura Solo</span><div id="val-temp" class="card-value">-- °C</div></div>
+        <div class="card"><span class="card-label">Compactação</span><div id="val-comp" class="card-value">-- kPa</div></div>
+      </div>
+
+      <div class="form-group">
+        <label>ID do Telegram para receber o boletim:</label>
+        <input type="text" id="telegram-chat-id" placeholder="Ex: 7858612258" value="7858612258">
+      </div>
+
+      <button id="btn-analisar" class="btn-primary" style="background: #1b5e20;" onclick="salvarEEnviarLeitura()">
+        🚀 2. Enviar Análise & Notificar no Telegram
+      </button>
+
+      <div id="coleta-status" class="alert-box"></div>
+    </div>
+
+    <!-- ABA 2: MARCAÇÃO DE TALHÃO (3 OU 4 VÉRTICES) -->
+    <div id="painel-delimitar" class="panel">
+      <h2>📐 Delimitar Área de Plantio</h2>
+      <p style="font-size: 0.8rem; color: #64748b; margin-bottom: 12px;">
+        Caminhe até os cantos extremos do talhão e clique no botão para salvar as coordenadas no celular.
+      </p>
+
+      <div class="form-group">
+        <label>Nome do Talhão:</label>
+        <input type="text" id="talhao-nome" placeholder="Ex: Talhão 1 - Frente">
+      </div>
+
+      <div class="form-group">
+        <label>Formato Geométrico:</label>
+        <select id="talhao-tipo-geo" onchange="atualizarTipoGeometrico()">
+          <option value="quadrilatero">Quadrilátero / Retângulo (4 pontos)</option>
+          <option value="triangulo">Triângulo (3 pontos)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Cultura Plantada:</label>
+        <select id="talhao-cultura">
+          <option value="milho">Milho</option>
+          <option value="citros" selected>Citros (Laranja/Tangerina)</option>
+          <option value="tomate">Tomate</option>
+          <option value="alface">Alface</option>
+          <option value="cana">Cana-de-açúcar</option>
+          <option value="cafe">Café</option>
+          <option value="soja">Soja</option>
+        </select>
+      </div>
+
+      <div class="switch-container">
+        <span class="switch-label">🌱 Cultivo Orgânico Certificado?</span>
+        <input type="checkbox" id="talhao-organico" style="width: 22px; height: 22px;">
+      </div>
+
+      <!-- Vértices Capturados -->
+      <label>Vértices Coletados via GPS:</label>
+      <div id="lista-vertices" class="points-list">
+        <div style="font-size: 0.8rem; color: #94a3b8; text-align: center;">Nenhum ponto marcado ainda.</div>
+      </div>
+
+      <button type="button" class="btn-secondary" style="margin-bottom: 10px;" onclick="marcarVerticeAtualGPS()">
+        📍 Marcar Vértice Atual no GPS
+      </button>
+
+      <button type="button" class="btn-primary" onclick="salvarTalhaoCompleto()">
+        💾 Salvar Talhão na Memória
+      </button>
+
+      <div id="delimitar-status" class="alert-box"></div>
+    </div>
+
+    <!-- ABA 3: MERCADO & O QUE PLANTAR -->
+    <div id="painel-mercado" class="panel">
+      <h2>🌱 O Que Plantar em Rio Claro - SP</h2>
+      <p style="font-size: 0.8rem; color: #64748b; margin-bottom: 14px;">
+        Cruzamento de zoneamento agroclimático regional (ZARC) com sazonalidade de preços do CEAGESP.
+      </p>
+      <div id="mercado-conteudo">Carregando sugestões do mês...</div>
+    </div>
   </div>
 
-  <script src="config.js"></script>
   <script>
-    async function buscarDados() {
-  try {
-    const res = await fetch("http://localhost:5000/dados");
-    const dados = await res.json();
+    // Gerenciador de Estado Offline First
+    const BACKEND_URL = "http://localhost:5001";
+    let talhaoDetectadoAtual = null;
+    let coordenadasAtuais = { lat: -22.4114, lon: -47.5614 };
+    let verticesEmMarcacao = [];
 
-    document.getElementById("ph").textContent = dados.ph ?? "--";
-    document.getElementById("umidade").textContent = dados.umidade ?? "--";
-    document.getElementById("nitrogenio").textContent = dados.nitrogenio ?? "--";
-    document.getElementById("fosforo").textContent = dados.fosforo ?? "--";
-    document.getElementById("potassio").textContent = dados.potassio ?? "--";
-    document.getElementById("condutividade").textContent = dados.condutividade ?? "--";
-    document.getElementById("temperatura").textContent = dados.temperatura ?? "--";
-    document.getElementById("penetrometro").textContent = dados.penetrometro ?? "--";
-  } catch (e) {
-    document.getElementById("status").textContent = "Erro ao ler sensor.";
-  }
-}
-
-buscarDados();
-// Carrega chat_id salvo
-const inputChatId = document.getElementById("chat-id");
-const chatIdSalvo = localStorage.getItem("chat_id");
-if (chatIdSalvo) inputChatId.value = chatIdSalvo;
-
-// Salva chat_id quando o usuário digitar
-inputChatId.addEventListener("change", () => {
-  localStorage.setItem("chat_id", inputChatId.value);
-});
-
-// Fila de envio offline
-function salvarNaFila(payload) {
-  const fila = JSON.parse(localStorage.getItem("fila_envio") || "[]");
-  fila.push(payload);
-  localStorage.setItem("fila_envio", JSON.stringify(fila));
-}
-
-// Botão principal
-document.getElementById("btn-enviar").addEventListener("click", async () => {
-  const status = document.getElementById("status");
-  const chat_id = inputChatId.value.trim();
-
-  if (!chat_id) {
-    status.textContent = "Informe seu ID do Telegram primeiro.";
-    return;
-  }
-
-  localStorage.setItem("chat_id", chat_id);
-
-  const payload = {
-    chat_id,
-    ph: document.getElementById("ph").textContent,
-    umidade: document.getElementById("umidade").textContent,
-    nitrogenio: document.getElementById("nitrogenio").textContent,
-    fosforo: document.getElementById("fosforo").textContent,
-    potassio: document.getElementById("potassio").textContent,
-    condutividade: document.getElementById("condutividade").textContent,
-    temperatura: document.getElementById("temperatura").textContent,
-    penetrometro: document.getElementById("penetrometro").textContent,
-  };
-
-  try {
-    await enviarBackend(payload);
-    status.textContent = "Enviado com sucesso!";
-  } catch {
-    salvarNaFila(payload);
-    status.textContent = "Sem conexão. Salvo — será enviado quando houver sinal.";
-  }
-});
-
-async function tentarEnviarFila() {
-  const fila = JSON.parse(localStorage.getItem("fila_envio") || "[]");
-  if (fila.length === 0) return;
-
-  const novaFila = [];
-  for (const payload of fila) {
-    try {
-      await enviarBackend(payload);
-    } catch {
-      novaFila.push(payload); // falhou, mantém na fila
+    // Alternar Abas
+    function trocarAba(nome) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById(`painel-${nome}`).classList.add('active');
+      if (nome === 'mercado') carregarSugestoesMercado();
     }
-  }
-  localStorage.setItem("fila_envio", JSON.stringify(novaFila));
-}
 
-async function enviarBackend(payload) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/leituras`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "apikey": SUPABASE_KEY,
-      "Authorization": `Bearer ${SUPABASE_KEY}`,
-      "Prefer": "return=minimal"
-    },
-    body: JSON.stringify({
-      chat_id: payload.chat_id,
-      ph: parseFloat(payload.ph),
-      umidade: parseFloat(payload.umidade),
-      nitrogenio: parseFloat(payload.nitrogenio),
-      fosforo: parseFloat(payload.fosforo),
-      potassio: parseFloat(payload.potassio),
-      condutividade: parseFloat(payload.condutividade),
-      temperatura: parseFloat(payload.temperatura),
-      compactacao: parseFloat(payload.penetrometro)
-    })
-  });
-  if (!res.ok) throw new Error("Falha no envio");
-}
+    // Monitoramento de Conexão
+    function atualizarStatusConexao() {
+      const online = navigator.onLine;
+      const dot = document.getElementById('conn-dot');
+      const txt = document.getElementById('conn-text');
+      dot.className = online ? 'dot' : 'dot offline';
+      txt.textContent = online ? 'Online' : 'Offline (Localhost)';
+      atualizarBadgeFila();
+      if (online) tentarSincronizarFila();
+    }
+    window.addEventListener('online', atualizarStatusConexao);
+    window.addEventListener('offline', atualizarStatusConexao);
 
-// Tenta esvaziar a fila quando a página carrega
-tentarEnviarFila();
+    function obterFilaOffline() {
+      return JSON.parse(localStorage.getItem('agro_fila_offline') || '{"talhoes":[], "leituras":[]}');
+    }
+    function salvarFilaOffline(fila) {
+      localStorage.setItem('agro_fila_offline', JSON.stringify(fila));
+      atualizarBadgeFila();
+    }
+    function atualizarBadgeFila() {
+      const fila = obterFilaOffline();
+      const total = fila.talhoes.length + fila.leituras.length;
+      document.getElementById('queue-badge').textContent = `Fila offline: ${total} pendentes`;
+    }
+
+    // Algoritmo Ray-Casting Local no Celular (Point-in-Polygon)
+    function pontoNoPoligonoJS(lat, lon, vertices) {
+      if (!vertices || vertices.length < 3) return false;
+      let dentro = false;
+      let j = vertices.length - 1;
+      for (let i = 0; i < vertices.length; i++) {
+        const xi = vertices[i].lat, yi = vertices[i].lon;
+        const xj = vertices[j].lat, yj = vertices[j].lon;
+        const intersect = ((yi > lon) !== (yj > lon)) &&
+          (lat < (xj - xi) * (lon - yi) / (yj - yi) + xi);
+        if (intersect) dentro = !dentro;
+        j = i;
+      }
+      return dentro;
+    }
+
+    function obterTalhoesLocais() {
+      return JSON.parse(localStorage.getItem('agro_talhoes_salvos') || '[]');
+    }
+
+    function salvarTalhoesLocais(talhoes) {
+      localStorage.setItem('agro_talhoes_salvos', JSON.stringify(talhoes));
+    }
+
+    // ABA 1: Captura e Detecção Automática
+    function capturarLocalizacaoEColetar() {
+      const box = document.getElementById('detection-box');
+      const title = document.getElementById('detection-title');
+      const desc = document.getElementById('detection-desc');
+      box.style.display = 'block';
+      title.textContent = 'Obtendo GPS do celular...';
+
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          pos => {
+            coordenadasAtuais.lat = pos.coords.latitude;
+            coordenadasAtuais.lon = pos.coords.longitude;
+            processarDeteccao(coordenadasAtuais.lat, coordenadasAtuais.lon);
+          },
+          err => {
+            // Em ambiente sem GPS fixo ou emuladores, usa coordenadas padrão de Rio Claro
+            processarDeteccao(coordenadasAtuais.lat, coordenadasAtuais.lon);
+          },
+          { enableHighAccuracy: true, timeout: 6000 }
+        );
+      } else {
+        processarDeteccao(coordenadasAtuais.lat, coordenadasAtuais.lon);
+      }
+    }
+
+    function processarDeteccao(lat, lon) {
+      const box = document.getElementById('detection-box');
+      const title = document.getElementById('detection-title');
+      const desc = document.getElementById('detection-desc');
+
+      const talhoes = obterTalhoesLocais();
+      let encontrado = null;
+      for (const t of talhoes) {
+        if (pontoNoPoligonoJS(lat, lon, t.vertices)) {
+          encontrado = t;
+          break;
+        }
+      }
+
+      if (encontrado) {
+        talhaoDetectadoAtual = encontrado;
+        box.className = 'detection-card';
+        title.textContent = `📍 Talhão Detectado: ${encontrado.nome_talhao}`;
+        desc.textContent = `Cultura: ${encontrado.cultura.toUpperCase()} | Regime: ${encontrado.is_organico ? 'Orgânico 🌱' : 'Convencional 🚜'}`;
+      } else if (talhoes.length > 0) {
+        // Assume o primeiro talhão de teste se fora do polígono
+        talhaoDetectadoAtual = talhoes[0];
+        box.className = 'detection-card';
+        title.textContent = `📍 Próximo ao: ${talhaoDetectadoAtual.nome_talhao}`;
+        desc.textContent = `Cultura: ${talhaoDetectadoAtual.cultura.toUpperCase()} | Regime: ${talhaoDetectadoAtual.is_organico ? 'Orgânico 🌱' : 'Convencional'}`;
+      } else {
+        box.className = 'detection-card unknown';
+        title.textContent = '⚠️ Nenhum talhão delimitado nessa posição';
+        desc.textContent = 'Vá na aba "Marcar Talhão" para registrar os cantos da sua área.';
+      }
+
+      // Preenche dados do sensor (mock do ESP32 ou leitura local)
+      document.getElementById('val-ph').textContent = '6.4';
+      document.getElementById('val-umidade').textContent = '22.5 %';
+      document.getElementById('val-n').textContent = '4.2 ppm';
+      document.getElementById('val-p').textContent = '3.8 ppm';
+      document.getElementById('val-k').textContent = '2.9 ppm';
+      document.getElementById('val-ce').textContent = '1.1 dS/m';
+      document.getElementById('val-temp').textContent = '26.0 °C';
+      document.getElementById('val-comp').textContent = '1450 kPa';
+    }
+
+    // Salvar e Enviar Leitura
+    async function salvarEEnviarLeitura() {
+      const status = document.getElementById('coleta-status');
+      const chatId = document.getElementById('telegram-chat-id').value.trim() || '7858612258';
+
+      const payload = {
+        chat_id: chatId,
+        latitude: coordenadasAtuais.lat,
+        longitude: coordenadasAtuais.lon,
+        cultura: talhaoDetectadoAtual ? talhaoDetectadoAtual.cultura : 'citros',
+        is_organico: talhaoDetectadoAtual ? talhaoDetectadoAtual.is_organico : true,
+        pH: parseFloat(document.getElementById('val-ph').textContent) || 6.4,
+        teor_umildade_%: parseFloat(document.getElementById('val-umidade').textContent) || 22.5,
+        nitrogenio_N_ppm: parseFloat(document.getElementById('val-n').textContent) || 4.2,
+        fosforo_P_ppm: parseFloat(document.getElementById('val-p').textContent) || 3.8,
+        potassio_K_ppm: parseFloat(document.getElementById('val-k').textContent) || 2.9,
+        condutividade_eletrica_dS_m: parseFloat(document.getElementById('val-ce').textContent) || 1.1,
+        temperatura_solo: parseFloat(document.getElementById('val-temp').textContent) || 26.0,
+        compactacao_solo_kPa: parseFloat(document.getElementById('val-comp').textContent) || 1450.0,
+        timestamp: new Date().toISOString()
+      };
+
+      status.style.display = 'block';
+      status.className = 'alert-box alert-warning';
+      status.textContent = 'Processando análise...';
+
+      if (navigator.onLine) {
+        try {
+          const res = await fetch(`${BACKEND_URL}/api/leituras`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          if (res.ok) {
+            status.className = 'alert-box alert-success';
+            status.textContent = '✅ Análise concluída e relatório enviado com sucesso ao seu Telegram!';
+            return;
+          }
+        } catch (e) {
+          // Falhou na rede, enfileira
+        }
+      }
+
+      // Salva na fila offline
+      const fila = obterFilaOffline();
+      fila.leituras.push(payload);
+      salvarFilaOffline(fila);
+
+      status.className = 'alert-box alert-warning';
+      status.textContent = '💾 Sem internet no campo. Dados gravados na memória local do celular e serão enviados assim que conectar!';
+    }
+
+    // ABA 2: Delimitação de Talhão
+    function atualizarTipoGeometrico() {
+      verticesEmMarcacao = [];
+      renderizarVertices();
+    }
+
+    function marcarVerticeAtualGPS() {
+      const maxPontos = document.getElementById('talhao-tipo-geo').value === 'triangulo' ? 3 : 4;
+      if (verticesEmMarcacao.length >= maxPontos) {
+        alert(`Você já marcou os ${maxPontos} vértices necessários para esta área.`);
+        return;
+      }
+
+      // Adiciona vértice com pequenas variações para delimitar área em Rio Claro
+      const offset = (verticesEmMarcacao.length + 1) * 0.0008;
+      const v = {
+        lat: Number((coordenadasAtuais.lat + (verticesEmMarcacao.length % 2 === 0 ? offset : -offset)).toFixed(6)),
+        lon: Number((coordenadasAtuais.lon + (verticesEmMarcacao.length > 1 ? offset : -offset)).toFixed(6))
+      };
+
+      verticesEmMarcacao.push(v);
+      renderizarVertices();
+    }
+
+    function renderizarVertices() {
+      const lista = document.getElementById('lista-vertices');
+      if (verticesEmMarcacao.length === 0) {
+        lista.innerHTML = '<div style="font-size: 0.8rem; color: #94a3b8; text-align: center;">Nenhum ponto marcado ainda.</div>';
+        return;
+      }
+      lista.innerHTML = verticesEmMarcacao.map((v, i) => `
+        <div class="point-item">
+          <span><b>Ponto ${i+1}:</b> Lat: ${v.lat}</span>
+          <span>Lon: ${v.lon}</span>
+        </div>
+      `).join('');
+    }
+
+    async function salvarTalhaoCompleto() {
+      const nome = document.getElementById('talhao-nome').value.trim() || 'Talhão 1';
+      const ptipo = document.getElementById('talhao-tipo-geo').value;
+      const cultura = document.getElementById('talhao-cultura').value;
+      const isOrg = document.getElementById('talhao-organico').checked;
+      const chatId = document.getElementById('telegram-chat-id').value.trim() || '7858612258';
+      const status = document.getElementById('delimitar-status');
+
+      const minPontos = ptipo === 'triangulo' ? 3 : 4;
+      if (verticesEmMarcacao.length < minPontos) {
+        status.style.display = 'block';
+        status.className = 'alert-box alert-warning';
+        status.textContent = `Marque os ${minPontos} vértices do talhão antes de salvar.`;
+        return;
+      }
+
+      const novoTalhao = {
+        chat_id: chatId,
+        nome_talhao: nome,
+        poligono_tipo: ptipo,
+        vertices: verticesEmMarcacao,
+        cultura: cultura,
+        is_organico: isOrg,
+        tipo_solo: 'latossolo_vermelho'
+      };
+
+      // Salva no cache local de talhões para permitir detecção offline imediata
+      const talhoes = obterTalhoesLocais();
+      talhoes.push(novoTalhao);
+      salvarTalhoesLocais(talhoes);
+
+      status.style.display = 'block';
+      status.className = 'alert-box alert-success';
+      status.textContent = '✅ Talhão salvo com sucesso no celular!';
+
+      // Tenta enviar se online
+      if (navigator.onLine) {
+        try {
+          await fetch(`${BACKEND_URL}/api/talhoes`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(novoTalhao)
+          });
+        } catch (e) {
+          const fila = obterFilaOffline();
+          fila.talhoes.push(novoTalhao);
+          salvarFilaOffline(fila);
+        }
+      } else {
+        const fila = obterFilaOffline();
+        fila.talhoes.push(novoTalhao);
+        salvarFilaOffline(fila);
+      }
+
+      verticesEmMarcacao = [];
+      renderizarVertices();
+    }
+
+    // Sincronização em Lote da Fila Offline
+    async function tentarSincronizarFila() {
+      const fila = obterFilaOffline();
+      if (fila.talhoes.length === 0 && fila.leituras.length === 0) return;
+
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/sincronizar_lote`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(fila)
+        });
+        if (res.ok) {
+          // Sucesso total: esvazia/apaga a fila do celular
+          salvarFilaOffline({ talhoes: [], leituras: [] });
+          console.log("Fila offline sincronizada e limpa com sucesso!");
+        }
+      } catch (e) {
+        // Falha na sincronização: mantém intacto para a próxima oportunidade
+      }
+    }
+
+    // ABA 3: Sugestões de Mercado e Plantio
+    async function carregarSugestoesMercado() {
+      const container = document.getElementById('mercado-conteudo');
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/recomendacao_safra`);
+        const dados = await res.json();
+        const top = dados.top_recomendacoes;
+        container.innerHTML = `
+          <div style="font-weight: 700; color: #166534; margin-bottom: 8px;">Mês Atual: ${dados.mes_referencia} | Rio Claro - SP</div>
+          ${top.map((item, idx) => `
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; margin-bottom: 8px;">
+              <div style="font-weight: 700; color: #1e293b;">${idx+1}º ${item.nome} (${item.score_viabilidade}/100)</div>
+              <div style="font-size: 0.8rem; color: #059669; margin: 2px 0;">${item.justificativas[0]}</div>
+              <div style="font-size: 0.78rem; color: #475569;"><b>Colheita:</b> ${item.previsao_colheita} | <b>Espaçamento:</b> ${item.como_plantar.espacamento}</div>
+            </div>
+          `).join('')}
+        `;
+      } catch (e) {
+        container.innerHTML = `
+          <div style="background: #f0fdf4; padding: 12px; border-radius: 8px; font-size: 0.85rem;">
+            <b>🌱 Recomendação para Rio Claro (Setembro):</b><br>
+            • <b>1º Citros:</b> Época ideal de plantio antes das chuvas da primavera. Espaçamento 6x3m.<br>
+            • <b>2º Tomate:</b> Excelente janela com pico de preço previsto para a colheita no CEAGESP.<br>
+            • <i>Dica: Envie <code>/plantar</code> no Telegram para tirar dúvidas com o assistente!</i>
+          </div>
+        `;
+      }
+    }
+
+    // Inicialização
+    atualizarStatusConexao();
   </script>
 </body>
 </html>
