@@ -12,7 +12,9 @@ import os
 import json
 import pickle
 from typing import Dict, Any, Optional
+import numpy as np
 import torch
+
 
 from agronomy_rules import (
     CULTURAS_CONFIG,
@@ -27,6 +29,13 @@ from weather_client import get_weather_features
 from data_engine import AgroDataEngine
 from model_multitask import AgroMultitaskNet
 
+try:
+    from model_advanced import AgroAdvancedNet
+    HAS_ADVANCED_NET = True
+except ImportError:
+    HAS_ADVANCED_NET = False
+
+
 
 class AgroDecisionSystem:
     """
@@ -40,9 +49,14 @@ class AgroDecisionSystem:
     ):
         base_dir = os.path.dirname(os.path.abspath(__file__))
         if model_path is None:
-            model_path = os.path.join(base_dir, "best_agro_multitask.pth")
+            adv_candidate = os.path.join(base_dir, "best_agro_advanced.pth")
+            if os.path.exists(adv_candidate):
+                model_path = adv_candidate
+            else:
+                model_path = os.path.join(base_dir, "best_agro_multitask.pth")
         elif not os.path.exists(model_path) and os.path.exists(os.path.join(base_dir, model_path)):
             model_path = os.path.join(base_dir, model_path)
+
 
         if scaler_path is None:
             scaler_path = os.path.join(base_dir, "agro_scaler_meta.pkl")
@@ -66,17 +80,32 @@ class AgroDecisionSystem:
         self.data_engine = AgroDataEngine(scaler_path=self.scaler_path)
 
         if not os.path.exists(self.model_path):
-            raise FileNotFoundError(
-                f"Checkpoint {self.model_path} não encontrado. "
-                "Execute o treinamento primeiro via 'train_pipeline.py'!"
-            )
+            # Tenta fallback para best_agro_advanced.pth se existir
+            adv_path = os.path.join(os.path.dirname(self.model_path), "best_agro_advanced.pth")
+            if os.path.exists(adv_path):
+                self.model_path = adv_path
+            else:
+                raise FileNotFoundError(
+                    f"Checkpoint {self.model_path} não encontrado. "
+                    "Execute o treinamento primeiro via 'train_advanced_pipeline.py' ou 'train_pipeline.py'!"
+                )
 
         checkpoint = torch.load(self.model_path, map_location=self.device)
         in_features = checkpoint["in_features"]
-        self.model = AgroMultitaskNet(in_features=in_features, num_irrig_classes=3, num_pest_labels=4)
-        self.model.load_state_dict(checkpoint["model_state_dict"])
+        state_dict = checkpoint["model_state_dict"]
+
+        # Detecta se é o modelo avançado (possui head_volume_quantiles) ou tradicional
+        if HAS_ADVANCED_NET and any("head_volume_quantiles" in k for k in state_dict.keys()):
+            self.model = AgroAdvancedNet(in_features=in_features)
+            self.is_advanced = True
+        else:
+            self.model = AgroMultitaskNet(in_features=in_features, num_irrig_classes=3, num_pest_labels=4)
+            self.is_advanced = False
+
+        self.model.load_state_dict(state_dict)
         self.model.to(self.device)
         self.model.eval()
+
 
     def predict(
         self,
@@ -115,14 +144,27 @@ class AgroDecisionSystem:
         tensor_x = torch.tensor(X_vec, dtype=torch.float32).to(self.device)
 
         # 3. Inferência da Rede Neural Multitarefa
+        vol_incerteza_dict = {}
         with torch.no_grad():
-            preds = self.model.predict_probabilities(tensor_x)
+            if getattr(self, "is_advanced", False):
+                preds = self.model.predict_with_uncertainty(tensor_x, mc_samples=1)
+                probs_irrig = preds["probs_irrigacao"].cpu().numpy()[0]
+                probs_pragas = preds["probs_pragas"].cpu().numpy()[0]
+                pred_vol_mm = float(preds["volume_p50"].cpu().numpy()[0])
+                vol_incerteza_dict = {
+                    "volume_min_p10_mm": round(float(preds["volume_p10"].cpu().numpy()[0]), 2),
+                    "volume_mediana_p50_mm": round(pred_vol_mm, 2),
+                    "volume_max_p90_mm": round(float(preds["volume_p90"].cpu().numpy()[0]), 2),
+                    "margem_incerteza_mm": round(float(preds["volume_incerteza_mm"].cpu().numpy()[0]), 2)
+                }
+            else:
+                preds = self.model.predict_probabilities(tensor_x)
+                probs_irrig = preds["probs_irrigacao"].cpu().numpy()[0]
+                probs_pragas = preds["probs_pragas"].cpu().numpy()[0]
+                pred_vol_mm = float(preds["volume_mm"].cpu().numpy()[0])
 
-        probs_irrig = preds["probs_irrigacao"].cpu().numpy()[0]
-        probs_pragas = preds["probs_pragas"].cpu().numpy()[0]
-        pred_vol_mm = float(preds["volume_mm"].cpu().numpy()[0])
+        classe_pred_irrig = int(np.argmax(probs_irrig))
 
-        classe_pred_irrig = int(np_argmax(probs_irrig))
 
         # 4. Verificação da Trava Estrita de Chuva (Segurança Física)
         precip_prob_6h = dados_clima["precipitation_probability_max_6h"]
@@ -242,8 +284,10 @@ class AgroDecisionSystem:
                     "justificativa": motivo_irrig,
                     "probabilidade_chuva_6h_pct": dados_clima["precipitation_probability_max_6h"],
                     "chuva_prevista_6h_mm": dados_clima["rain_sum_6h"]
-                }
+                },
+                "intervalo_confianca_quantilica": vol_incerteza_dict
             },
+
             "metricas_hidricas_talhao": {
                 "area_ha": round(float(area_ha), 3),
                 "volume_necessario_litros": detalhes_irrig.get("volume_necessario_litros", 0.0),
