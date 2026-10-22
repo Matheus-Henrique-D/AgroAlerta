@@ -138,6 +138,25 @@ def registrar_leitura():
                 area_ha=area_ha
             )
             texto_llm = gerar_texto_prescritivo_llm(relatorio_ia)
+            # Persiste os resultados analíticos da Rede Neural e o texto da LLM no banco
+            analise_id = db_manager.salvar_analise_ia(
+                leitura_id=leitura_id,
+                chat_id=chat_id,
+                talhao_id=talhao_id,
+                talhao_nome=talhao_nome,
+                relatorio_ia=relatorio_ia,
+                texto_prescritivo_llm=texto_llm
+            )
+            # Registra no histórico de mensagens do Telegram
+            if texto_llm:
+                db_manager.salvar_mensagem_telegram(
+                    chat_id=chat_id,
+                    direcao="saida",
+                    mensagem_texto=texto_llm,
+                    tipo_mensagem="prescricao",
+                    talhao_mencionado_id=talhao_id,
+                    analise_ia_id=analise_id
+                )
             # Notifica o produtor via Telegram com linguagem humanizada
             notificar_analise_leitura(chat_id, relatorio_ia)
         except Exception as e:
@@ -152,6 +171,20 @@ def registrar_leitura():
         "relatorio_ia": relatorio_ia,
         "texto_prescritivo_llm": texto_llm
     }), 201
+
+
+@app.route("/api/historico", methods=["GET"])
+def api_obter_historico():
+    """Retorna o histórico de leituras físicas e diagnósticos da IA para o produtor."""
+    chat_id = request.args.get("chat_id", "7858612258")
+    talhao_id = request.args.get("talhao_id", type=int)
+    limit = request.args.get("limit", default=10, type=int)
+    historico = db_manager.listar_historico_completo(chat_id=chat_id, talhao_id=talhao_id, limit=limit)
+    return jsonify({
+        "sucesso": True,
+        "total": len(historico),
+        "historico": historico
+    })
 
 
 @app.route("/api/sincronizar_lote", methods=["POST"])
@@ -192,7 +225,7 @@ def sincronizar_lote():
             is_organico = talhao["is_organico"] if talhao else bool(l.get("is_organico", False))
             area_ha = float(talhao.get("area_ha", 1.0)) if (talhao and talhao.get("area_ha")) else float(l.get("area_ha", 1.0))
 
-            db_manager.salvar_leitura_solo(
+            leitura_id = db_manager.salvar_leitura_solo(
                 chat_id=chat_id,
                 lat=lat,
                 lon=lon,
@@ -203,6 +236,15 @@ def sincronizar_lote():
 
             if HAS_AI:
                 rel = predict_agro_system(lat, lon, cultura, is_organico, l, area_ha=area_ha)
+                txt_llm = gerar_texto_prescritivo_llm(rel)
+                db_manager.salvar_analise_ia(
+                    leitura_id=leitura_id,
+                    chat_id=chat_id,
+                    talhao_id=talhao["id"] if talhao else None,
+                    talhao_nome=talhao["nome_talhao"] if talhao else None,
+                    relatorio_ia=rel,
+                    texto_prescritivo_llm=txt_llm
+                )
                 notificar_analise_leitura(chat_id, rel)
 
             leituras_salvas += 1

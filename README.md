@@ -181,14 +181,35 @@ Construída em **PyTorch** ([`Rede Neural/model_multitask.py`](Rede%20Neural/mod
 
 ---
 
-## 💬 Assistente no Telegram com LLM
+## 💬 Telegram como Input & Output da IA (100% Linguagem Natural)
 
-O bot do Telegram ([`backend/bot.py`](backend/bot.py)) aproxima a tecnologia do dia a dia do homem do campo:
-- **Comando `/start`**: Apresenta os comandos e exibe o ID de conexão.
-- **Comando `/irrigar`**: Resumo rápido sobre necessidade de ligar os motores de rega hoje.
-- **Comando `/plantar`**: Sugestões agronômicas do mês para Rio Claro com previsão de colheita e preços.
-- **Comando `/talhoes`**: Lista todas as áreas mapeadas na propriedade.
-- **Perguntas Livres**: O produtor pode enviar mensagens como *"Tem risco de bicho no meu tomate?"* ou *"Qual adubo orgânico coloco no milho?"*, e o LLM responde com linguagem prática baseada nos dados salvos do talhão.
+O bot do Telegram ([`backend/bot.py`](backend/bot.py)) é a interface primária de comunicação com o produtor rural:
+- **Zero burocracia de comandos:** O produtor conversa em **linguagem 100% natural** (ex: *"Oi, tenho um talhão de citros orgânico em latossolo vermelho e queria saber se preciso regar hoje"*).
+- **Configuração da Lavoura no Chat:** Ao informar o solo, a cultura ou o regime (Orgânico vs Convencional), a IA atualiza os parâmetros do produtor no Supabase imediatamente.
+- **Entrada Nativa de GPS:** O produtor pode compartilhar a localização do celular pelo botão nativo do Telegram; o bot identifica o talhão na hora e puxa o diagnóstico hídrico.
+- **Memória Conversacional:** O histórico de interações (`mensagens_telegram`) e diagnósticos anteriores (`analises_ia`) é resgatado para contextualizar as respostas da LLM.
+
+---
+
+## 🗄️ Arquitetura de Dados no Supabase Cloud (PostgreSQL)
+
+O sistema conta com persistência em nuvem no **Supabase** e espelho local no **SQLite** ([`backend/db_manager.py`](backend/db_manager.py)), organizado em 5 tabelas:
+
+1. **`produtores`:** Cadastro do produtor pelo Telegram (`chat_id`, cultura ativa, tipo de solo ativo, regime orgânico ativo e localização).
+2. **`talhoes`:** Polígonos georreferenciados (3 ou 4 vértices em `JSONB`), centróide e área calculada em hectares.
+3. **`leituras_solo`:** Registro físico das **8 entradas exatas dos sensores**:
+   - `ph` (acidez/alcalinidade)
+   - `umidade` (%)
+   - `nitrogenio` (N em ppm)
+   - `fosforo` (P em ppm)
+   - `potassio` (K em ppm)
+   - `condutividade` (CE em dS/m)
+   - `temperatura` (°C)
+   - `compactacao` (kPa)
+4. **`analises_ia`:** Resultados da Rede Neural e do LLM (lâmina em mm, volume total necessário em litros, economia real em litros, tempos de motobomba, alertas de pragas, receitas de bioinsumos e texto prescritivo).
+5. **`mensagens_telegram`:** Histórico completo de perguntas e respostas para memória contínua da LLM.
+
+O script DDL completo está disponível em [`backend/supabase_schema.sql`](backend/supabase_schema.sql).
 
 ---
 
@@ -197,14 +218,16 @@ O bot do Telegram ([`backend/bot.py`](backend/bot.py)) aproxima a tecnologia do 
 ```text
 ├── README.md                      # Documentação técnica completa
 ├── requirements.txt               # Dependências do projeto para pip
-├── test_integration_complete.py   # Bateria de 6 testes de integração automatizados
+├── test_integration_complete.py   # Bateria de 8 testes de integração automatizados
 │
 ├── backend/                       # Serviços de Backend e Telegram
-│   ├── bot.py                     # Bot interativo do Telegram com handlers
-│   ├── llm_adapter.py             # Síntese prescritiva via Gemini API e fallback empático
+│   ├── bot.py                     # Bot interativo do Telegram (Input/Output Linguagem Natural)
+│   ├── llm_adapter.py             # Parser NLP, síntese prescritiva Gemini e contexto semântico
 │   ├── geo_engine.py              # Algoritmo Ray-Casting Point-in-Polygon e cálculo Shoelace
-│   ├── db_manager.py              # Persistência híbrida (Supabase / SQLite local)
-│   ├── server.py                  # API REST Flask com resposta de prescrição LLM
+│   ├── db_manager.py              # Persistência híbrida (Supabase REST / SQLite local)
+│   ├── supabase_schema.sql        # Script DDL completo para criar as 5 tabelas no Supabase
+│   ├── server.py                  # API REST Flask com rotas de leituras e histórico
+│   ├── config.py                  # Chaves do Supabase, token Telegram e Gemini
 │   └── config.exemplo.py          # Modelo de configuração para tokens e chaves
 │
 ├── frontend/                      # Web App Mobile Offline-First

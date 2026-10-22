@@ -200,32 +200,141 @@ def formatar_relatorio_para_produtor(relatorio_ia: Dict[str, Any], api_key_llm: 
     return gerar_texto_prescritivo_llm(relatorio_ia, api_key_llm)
 
 
+def extrair_configuracao_produtor_linguagem_natural(texto: str) -> Dict[str, Any]:
+    """
+    Identifica se a mensagem do produtor no Telegram contém instruções
+    de configuração da lavoura (cultura, tipo de solo e regime de cultivo).
+    Exemplos:
+    - 'planto citros orgânico em latossolo vermelho'
+    - 'meu talhão é de milho convencional'
+    - 'aqui é terra roxa e cultivo tomate orgânico em 3 hectares'
+    """
+    t = texto.lower()
+    config = {}
+
+    # 1. Detecção da Cultura
+    mapa_culturas = {
+        "citros": ["citros", "laranja", "tangerina", "limão", "limao", "pomar"],
+        "tomate": ["tomate", "tomateiro"],
+        "milho": ["milho", "milharal"],
+        "cana": ["cana", "canavial", "cana-de-açúcar", "cana de acucar"],
+        "alface": ["alface", "hortaliça", "horta"],
+        "cafe": ["café", "cafe", "cafeeiro"],
+        "soja": ["soja", "sojicultor"]
+    }
+    for cult_key, palavras in mapa_culturas.items():
+        if any(p in t for p in palavras):
+            config["cultura"] = cult_key
+            break
+
+    # 2. Detecção do Tipo de Solo
+    if any(s in t for s in ["latossolo", "terra roxa", "vermelho", "terra vermelha"]):
+        config["tipo_solo"] = "latossolo_vermelho"
+    elif any(s in t for s in ["argiloso", "argila", "pesado", "terra preta"]):
+        config["tipo_solo"] = "argiloso"
+    elif any(s in t for s in ["arenoso", "areia", "leve"]):
+        config["tipo_solo"] = "arenoso"
+    elif any(s in t for s in ["solo ideal", "franco", "médio", "medio"]):
+        config["tipo_solo"] = "ideal"
+
+    # 3. Detecção do Regime de Cultivo (Orgânico vs Convencional)
+    if any(r in t for r in ["orgânico", "organico", "biológico", "biologico", "sem veneno", "agroecológico", "agroecologico"]):
+        config["is_organico"] = True
+    elif any(r in t for r in ["convencional", "químico", "quimico", "defensivo tradicional"]):
+        config["is_organico"] = False
+
+    # 4. Detecção de Área em Hectares
+    import re
+    match_area = re.search(r"(\d+(?:[.,]\d+)?)\s*(?:ha|hectare|hectares)", t)
+    if match_area:
+        try:
+            config["area_ha"] = float(match_area.group(1).replace(",", "."))
+        except Exception:
+            pass
+
+    return config
+
+
+def formatar_contexto_historico_para_llm(
+    historico: List[Dict[str, Any]],
+    produtor: Optional[Dict[str, Any]] = None
+) -> str:
+    """
+    Transforma o histórico do Supabase em um resumo semântico e cronológico
+    para que a LLM tenha memória precisa de campo.
+    """
+    linhas = []
+    if produtor:
+        org_str = "Orgânico 🌱" if produtor.get("is_organico_ativo") else "Convencional 🚜"
+        linhas.append(f"• Configuração Ativa do Produtor: Cultura {str(produtor.get('cultura_ativa')).capitalize()} ({org_str}), Solo {produtor.get('tipo_solo_ativo')}, Área ~{produtor.get('area_ha_ativa', 1.0)} ha.")
+
+    if not historico:
+        linhas.append("• Ainda não há medições anteriores gravadas no banco de dados.")
+        return "\n".join(linhas)
+
+    linhas.append("• Histórico Recente de Diagnósticos e Leituras de Solo:")
+    for i, h in enumerate(historico[:3], 1):
+        dt = h.get("leitura_data", "Data recente")
+        talhao = h.get("talhao_nome") or "Talhão Principal"
+        cult = str(h.get("cultura", "lavoura")).capitalize()
+        status_irrig = h.get("status_irrigacao", "Status não registrado")
+        litros_nec = h.get("volume_necessario_litros", 0.0)
+        litros_econ = h.get("volume_economizado_litros", 0.0)
+        umid = h.get("umidade", 0.0)
+        ph = h.get("ph", 6.5)
+
+        detalhes_hidricos = ""
+        if litros_nec > 0:
+            detalhes_hidricos = f"Volume Recomendado: ~{litros_nec:,.0f} L"
+        elif litros_econ > 0:
+            detalhes_hidricos = f"Economia Real: ~{litros_econ:,.0f} L poupados"
+
+        pragas = h.get("alertas_pragas", [])
+        pragas_txt = ", ".join([p.get("patogeno_estresse", "") for p in pragas[:2] if isinstance(p, dict)]) if pragas else "Nenhum alerta crítico"
+
+        linhas.append(f"  {i}. [{dt}] {talhao} ({cult}): Umidade={umid:.1f}%, pH={ph:.1f}. Decisão: {status_irrig}. {detalhes_hidricos}. Pragas: {pragas_txt}.")
+
+    return "\n".join(linhas)
+
+
 def responder_duvida_produtor(
     pergunta: str,
     contexto_talhoes: List[Dict[str, Any]],
     ultimas_leituras: List[Dict[str, Any]],
     sugestoes_plantio: Optional[Dict[str, Any]] = None,
-    api_key_llm: Optional[str] = None
+    api_key_llm: Optional[str] = None,
+    produtor: Optional[Dict[str, Any]] = None,
+    historico_completo: Optional[List[Dict[str, Any]]] = None
 ) -> str:
     """
-    Responde perguntas livres do produtor rural pelo Telegram com base nos dados reais salvos.
+    Responde perguntas livres do produtor rural pelo Telegram com base na memória
+    e nos dados reais registrados no Supabase / SQLite.
+    Garante linguagem 100% natural, clara, amigável e direta.
     """
+    hist = historico_completo if historico_completo is not None else ultimas_leituras
+    resumo_historico = formatar_contexto_historico_para_llm(hist, produtor)
+
     prompt = f"""{PROMPT_SISTEMA_AGRONOMO}
 
-O produtor enviou a seguinte pergunta pelo Telegram:
+O produtor enviou uma mensagem em linguagem natural no Telegram:
 "{pergunta}"
 
-Dados reais disponíveis da propriedade dele em Rio Claro - SP:
-1. Talhões cadastrados:
-{json.dumps(contexto_talhoes, ensure_ascii=False, indent=2)}
+Memória e Contexto Factual da Propriedade (Rio Claro - SP):
+1. Configuração e Histórico de Campo:
+{resumo_historico}
 
-2. Últimas medições de solo e análises:
-{json.dumps(ultimas_leituras, ensure_ascii=False, indent=2)}
+2. Talhões Mapeados na Fazenda:
+{json.dumps(contexto_talhoes, ensure_ascii=False, indent=2) if contexto_talhoes else "Nenhum talhão formalmente delimitado"}
 
-3. Sugestões de Plantio e Mercado (ZARC Rio Claro / CEAGESP):
+3. Recomendações de Mercado e Safra (ZARC / CEAGESP):
 {json.dumps(sugestoes_plantio, ensure_ascii=False, indent=2) if sugestoes_plantio else "Não consultado"}
 
-Responda diretamente à dúvida do produtor, citando os dados reais dos talhões dele se for relevante, com tom prestativo, simples e orientativo.
+Diretrizes de Resposta:
+- Seja extremamente claro, acolhedor e direto ao ponto.
+- Responda como um engenheiro agrônomo parceiro de campo no WhatsApp/Telegram.
+- Se a pergunta for sobre irrigação, cite os litros de água ou a economia exata do talhão dele.
+- Se for sobre pragas, cite as pragas específicas da cultura dele e a receita do que passar.
+- NUNCA use termos de programação, nomes de tabelas ou jargões técnicos de machine learning.
 """
 
     if not api_key_llm:
@@ -236,7 +345,79 @@ Responda diretamente à dúvida do produtor, citando os dados reais dos talhões
         if resposta_llm:
             return resposta_llm
 
+    # =========================================================================
+    # FALLBACK LOCAL ESTRUTURADO INTELIGENTE (Sem Depender de API Externa)
+    # =========================================================================
     p_lower = pergunta.lower()
+
+    # 1. Dúvidas sobre Irrigação / Água / Rega
+    if any(palavra in p_lower for palavra in ["regar", "irrigar", "agua", "chuva", "seco", "bomba", "molhar"]):
+        if hist:
+            ult = hist[0]
+            talhao = ult.get("talhao_nome") or "seu talhão"
+            cultura = str(ult.get("cultura") or (produtor.get("cultura_ativa") if produtor else "cultura")).capitalize()
+            status_irrig = ult.get("status_irrigacao", "")
+            vol_nec = ult.get("volume_necessario_litros", 0.0)
+            vol_econ = ult.get("volume_economizado_litros", 0.0)
+            tempo_got = ult.get("tempo_gotejamento_minutos", 0)
+            tempo_asp = ult.get("tempo_aspersao_minutos", 0)
+            trava = ult.get("trava_chuva_acionada", False)
+            umid = ult.get("umidade", 0.0)
+
+            if trava or "suspender" in status_irrig.lower():
+                return (
+                    f"💧 *Situação de Irrigação — {talhao} ({cultura}):*\n\n"
+                    f"• *Bomba Desligada:* Há alerta de chuva iminente para a região de Rio Claro!\n"
+                    f"• *Economia de Água:* Você está poupando aproximadamente *{vol_econ:,.0f} litros* neste talhão hoje.\n"
+                    f"• A umidade da terra está em {umid:.1f}%. Deixe a água da chuva hidratar o solo naturalmente."
+                )
+            elif vol_nec > 0:
+                h_got, m_got = divmod(tempo_got, 60)
+                return (
+                    f"💧 *Situação de Irrigação — {talhao} ({cultura}):*\n\n"
+                    f"• *Ligar Irrigação:* O solo apresentou déficit hídrico (umidade em {umid:.1f}%).\n"
+                    f"• *Volume Necessário:* Aplicar cerca de *{vol_nec:,.0f} litros de água* em toda a área.\n"
+                    f"• *Tempo de Bomba:* {h_got}h {m_got:02d}min no gotejamento (ou {tempo_asp} min na aspersão).\n"
+                    f"• *Melhor Horário:* Início da manhã (06:00 às 08:30) ou fim da tarde para evitar perda por evaporação."
+                )
+            else:
+                return (
+                    f"💧 *Situação de Irrigação — {talhao} ({cultura}):*\n\n"
+                    f"• *Bomba Desligada:* A umidade da terra está boa ({umid:.1f}%), suprindo bem as raízes.\n"
+                    f"• Não há necessidade de ligar os motores hoje. Você economiza energia elétrica e conserva a água."
+                )
+
+    # 2. Dúvidas sobre Pragas / Doenças / Insumos
+    if any(palavra in p_lower for palavra in ["praga", "bicho", "doença", "doenca", "fungo", "lagarta", "veneno", "remedio", "bioinsumo", "passar"]):
+        if hist:
+            ult = hist[0]
+            talhao = ult.get("talhao_nome") or "talhão"
+            cultura = str(ult.get("cultura") or (produtor.get("cultura_ativa") if produtor else "cultura")).capitalize()
+            is_org = ult.get("is_organico", True)
+            regime = "Orgânico 🌱" if is_org else "Convencional 🚜"
+            pragas = ult.get("pragas_especificas", [])
+            prescricao = ult.get("prescricao_insumos", [])
+
+            linhas_resp = [f"🌿 *Manejo Fitossanitário — {talhao} ({cultura} - {regime}):*\n"]
+            if pragas:
+                linhas_resp.append("🔍 *Atenção aos seguintes sintomas nas folhas:*")
+                for p in pragas[:2]:
+                    if isinstance(p, dict) and "especies_principais" in p:
+                        for esp in p["especies_principais"][:1]:
+                            linhas_resp.append(f"• *{esp.get('nome')}:* _{esp.get('sintoma')}_")
+                linhas_resp.append("")
+
+            if prescricao:
+                linhas_resp.append("📋 *O que aplicar:*")
+                for acao in prescricao[:2]:
+                    linhas_resp.append(f"• {acao}")
+                linhas_resp.append(f"\n⏰ *Horário ideal:* Final da tarde (após as 16h30) para melhor absorção.")
+            else:
+                linhas_resp.append("✅ *A lavoura está com sanidade equilibrada!* Mantenha apenas a inspeção visual rotineira.")
+
+            return "\n".join(linhas_resp)
+
+    # 3. Dúvidas sobre O que Plantar / Safra / Época
     if any(palavra in p_lower for palavra in ["plantar", "safra", "epoca", "mes", "semente", "o que"]):
         if sugestoes_plantio and "top_recomendacoes" in sugestoes_plantio:
             top = sugestoes_plantio["top_recomendacoes"][0]
@@ -245,29 +426,22 @@ Responda diretamente à dúvida do produtor, citando os dados reais dos talhões
                 f"A cultura mais recomendada agora é o *{top['nome']}* (Pontuação {top['score_viabilidade']}/100).\n"
                 f"• *Por que plantar agora?* {top['justificativas'][0]}.\n"
                 f"• *Colheita estimada:* {top['previsao_colheita']}.\n"
-                f"• *Como plantar:* Espaçamento {top['como_plantar']['espacamento']}.\n"
+                f"• *Espaçamento:* {top['como_plantar']['espacamento']}.\n"
                 f"• *Adubação:* {top['como_plantar']['adubacao_recomendada']}."
             )
 
-    if any(palavra in p_lower for palavra in ["regar", "irrigar", "agua", "chuva", "seco"]):
-        if ultimas_leituras:
-            ult = ultimas_leituras[0]
-            talhao = ult.get("talhao_nome", "seu talhão")
-            umid = ult.get("umidade", 0.0)
-            return (
-                f"💧 *Situação de Água do {talhao}:*\n\n"
-                f"A umidade medida recentemente no solo foi de {umid:.1f}%.\n"
-                f"Se o dia estiver quente e sem previsão de chuva forte, consulte o boletim diário com o tempo exato de bomba."
-            )
+    # 4. Saudação ou Dúvida Geral
+    nome_prod = produtor.get("nome_produtor", "amigo produtor") if produtor else "amigo produtor"
+    cultura_ativa = (produtor.get("cultura_ativa") if produtor else "sua lavoura").capitalize()
+    solo_ativo = (produtor.get("tipo_solo_ativo") if produtor else "latossolo vermelho").replace("_", " ")
 
-    qtd_talhoes = len(contexto_talhoes)
     return (
-        f"Olá, amigo produtor! 👨‍🌾\n\n"
-        f"Vi sua mensagem sobre: *\"{pergunta}\"*.\n"
-        f"Você tem atualmente *{qtd_talhoes} talhão(ões)* cadastrado(s) no sistema.\n"
-        f"Pode me perguntar a qualquer momento:\n"
-        f"• *'Preciso regar hoje?'*\n"
-        f"• *'O que é melhor plantar agora?'*\n"
-        f"• *'Tem perigo de praga no meu milho?'*\n\n"
-        f"Estou aqui para ajudar no dia a dia da roça!"
+        f"Olá, {nome_prod}! 👨‍🌾\n\n"
+        f"Estou acompanhando sua plantação de *{cultura_ativa}* em *{solo_ativo}*.\n\n"
+        f"Pode conversar comigo naturalmente! Pergunte, por exemplo:\n"
+        f"• *'Preciso ligar a irrigação hoje?'*\n"
+        f"• *'Tem perigo de pragas na minha roça?'*\n"
+        f"• *'Mudei meu talhão para tomate orgânico'*\n"
+        f"• *'Qual o melhor horário para pulverizar?'*\n\n"
+        f"Como posso te ajudar no campo hoje?"
     )

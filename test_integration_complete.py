@@ -149,8 +149,8 @@ class TestAgroAlertaIntegracao(unittest.TestCase):
 
     def test_05_bot_telegram_e_llm(self):
         """Valida a interação em linguagem natural com o bot e respostas orientativas."""
-        resp_plantar = processar_mensagem_produtor("7858612258", "/plantar")
-        self.assertIn("Planejamento de Safra", resp_plantar)
+        resp_plantar = processar_mensagem_produtor("7858612258", "o que devo plantar agora?")
+        self.assertIn("Plantio para Rio Claro", resp_plantar)
 
         resp_duvida = processar_mensagem_produtor("7858612258", "Preciso regar meu talhão hoje?")
         self.assertTrue(len(resp_duvida) > 20)
@@ -186,6 +186,88 @@ class TestAgroAlertaIntegracao(unittest.TestCase):
         self.assertIn("Psilídeo", texto_prescritivo)
         print(f"\n-> Teste Síntese LLM: Texto prescritivo gerado com sucesso (Tamanho: {len(texto_prescritivo)} chars):")
         print(texto_prescritivo[:350] + "\n...")
+
+    def test_07_persistencia_analises_ia_e_8_sensores(self):
+        """Valida a persistência completa dos 8 sensores e da análise da IA no banco de dados."""
+        chat_id = "7858612258"
+        t = db_manager.salvar_talhao(
+            chat_id=chat_id,
+            nome_talhao="Talhão Citros 4.5ha",
+            poligono_tipo="quadrilatero",
+            vertices=self.vertices_quadrado,
+            cultura="citros",
+            is_organico=True,
+            tipo_solo="latossolo_vermelho",
+            area_ha=4.5
+        )
+
+        sensores_8 = {
+            "ph": 6.3,
+            "umidade": 17.5,
+            "nitrogenio": 4.2,
+            "fosforo": 3.1,
+            "potassio": 2.8,
+            "condutividade": 1.05,
+            "temperatura": 25.5,
+            "compactacao": 1380.0
+        }
+        leitura_id = db_manager.salvar_leitura_solo(
+            chat_id=chat_id,
+            lat=-22.4114,
+            lon=-47.5614,
+            talhao_id=t["id"],
+            talhao_nome=t["nome_talhao"],
+            dados_sensores=sensores_8,
+            origem="telegram"
+        )
+        self.assertIsNotNone(leitura_id)
+
+        relatorio = predict_agro_system(
+            lat=-22.4114,
+            lon=-47.5614,
+            cultura="citros",
+            is_organico=True,
+            dados_arduino_dict=sensores_8,
+            area_ha=4.5
+        )
+        from llm_adapter import gerar_texto_prescritivo_llm
+        texto_llm = gerar_texto_prescritivo_llm(relatorio)
+
+        analise_id = db_manager.salvar_analise_ia(
+            leitura_id=leitura_id,
+            chat_id=chat_id,
+            talhao_id=t["id"],
+            talhao_nome=t["nome_talhao"],
+            relatorio_ia=relatorio,
+            texto_prescritivo_llm=texto_llm
+        )
+        self.assertIsNotNone(analise_id)
+
+        hist = db_manager.listar_historico_completo(chat_id=chat_id, limit=1)
+        self.assertGreater(len(hist), 0)
+        primeiro = hist[0]
+        self.assertEqual(primeiro["leitura_id"], leitura_id)
+        self.assertIn("volume_necessario_litros", primeiro)
+        self.assertIn("texto_prescritivo_llm", primeiro)
+        print(f"-> Teste Persistência IA e 8 Sensores: Análise ID = {analise_id} salva com sucesso.")
+        print(f"   Lâmina = {primeiro['lamina_recomendada_mm']} mm | Volume Total = {primeiro['volume_necessario_litros']:,.0f} L")
+
+    def test_08_telegram_linguagem_natural_configuracao(self):
+        """Valida que o bot compreende linguagem natural para setar solo, cultura e orgânico."""
+        chat_id = "7858612258"
+        msg_config = "Olá, estou plantando tomate orgânico em solo argiloso no meu talhão de 2.5 hectares"
+        resposta = processar_mensagem_produtor(chat_id, msg_config, nome_usuario="Seu Pedro")
+        self.assertIn("Tomate", resposta)
+        self.assertIn("Argiloso", resposta)
+        self.assertIn("Orgânico", resposta)
+
+        # Valida que os dados foram atualizados no banco
+        produtor = db_manager.obter_ou_criar_produtor(chat_id)
+        self.assertEqual(produtor["cultura_ativa"], "tomate")
+        self.assertEqual(produtor["tipo_solo_ativo"], "argiloso")
+        self.assertTrue(produtor["is_organico_ativo"])
+        print(f"-> Teste Configuração Linguagem Natural Telegram: Sucesso!")
+        print(f"   Produtor atualizado para: {produtor['cultura_ativa']} | Solo: {produtor['tipo_solo_ativo']} | Orgânico: {produtor['is_organico_ativo']}")
 
 
 if __name__ == "__main__":

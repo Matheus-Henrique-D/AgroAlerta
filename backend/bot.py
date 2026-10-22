@@ -33,101 +33,104 @@ except ImportError:
     RIO_CLARO_LON = -47.5614
 
 from db_manager import db_manager
-from llm_adapter import formatar_relatorio_para_produtor, responder_duvida_produtor
+from llm_adapter import (
+    formatar_relatorio_para_produtor,
+    responder_duvida_produtor,
+    extrair_configuracao_produtor_linguagem_natural
+)
 from crop_recommendation import recomendar_culturas_para_produtor
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("AgroBot")
 
 
-def processar_mensagem_produtor(chat_id: str, texto: str) -> str:
+def processar_mensagem_produtor(chat_id: str, texto: str, nome_usuario: Optional[str] = None) -> str:
     """
-    Processa a mensagem do produtor (comando ou dúvida livre) e retorna a resposta formatada pelo LLM.
+    Processa a mensagem do produtor em Linguagem Natural 100% humanizada,
+    permitindo que ele converse normalmente, configure sua lavoura (cultura, solo, orgânico)
+    e tire dúvidas baseadas nos dados reais salvos no Supabase / SQLite.
     """
     texto_strip = texto.strip()
-    cmd = texto_strip.lower()
+    cid = str(chat_id)
 
-    # 1. Comando /start
-    if cmd in ["/start", "oi", "olá", "ola", "bom dia", "boa tarde"]:
-        talhoes = db_manager.listar_talhoes(chat_id)
+    # 1. Recupera ou cria o cadastro do produtor
+    produtor = db_manager.obter_ou_criar_produtor(cid, nome=nome_usuario)
+
+    # 2. Registra a mensagem de entrada do produtor
+    db_manager.salvar_mensagem_telegram(
+        chat_id=cid,
+        direcao="entrada",
+        mensagem_texto=texto_strip,
+        tipo_mensagem="texto_livre"
+    )
+
+    cmd_lower = texto_strip.lower()
+
+    # 3. Verificação de Configuração em Linguagem Natural (Cultura, Solo, Orgânico)
+    config_mudancas = extrair_configuracao_produtor_linguagem_natural(texto_strip)
+    if config_mudancas:
+        produtor_atualizado = db_manager.atualizar_configuracao_produtor(cid, **config_mudancas)
+        cult_nome = str(produtor_atualizado.get("cultura_ativa", "cultura")).capitalize()
+        solo_nome = str(produtor_atualizado.get("tipo_solo_ativo", "latossolo vermelho")).replace("_", " ").capitalize()
+        org_status = "Cultivo Orgânico Certificado 🌱" if produtor_atualizado.get("is_organico_ativo") else "Cultivo Convencional 🚜"
+        area_status = f"{produtor_atualizado.get('area_ha_ativa', 1.0):.2f} ha"
+
+        # Se a mensagem foi puramente uma configuração ou declaração da lavoura
+        palavras_pergunta = ["preciso", "quando", "quanto", "como", "devo", "qual", "tem", "por que", "porque", "?"]
+        if not any(p in cmd_lower for p in palavras_pergunta):
+            resposta_config = (
+                f"✅ *Perfeito! Atualizei as informações da sua lavoura:*\n\n"
+                f"• *Cultura Ativa:* {cult_nome}\n"
+                f"• *Tipo de Solo:* {solo_nome}\n"
+                f"• *Manejo:* {org_status}\n"
+                f"• *Área de Referência:* ~{area_status}\n\n"
+                f"Todas as próximas recomendações de água, pragas e insumos serão calculadas para essa condição!\n"
+                f"Se quiser saber a situação hídrica ou se precisa regar, é só me perguntar aqui."
+            )
+            db_manager.salvar_mensagem_telegram(cid, "saida", resposta_config, "configuracao")
+            return resposta_config
+
+    # 4. Saudação Inicial (/start ou "Oi")
+    if cmd_lower in ["/start", "oi", "olá", "ola", "bom dia", "boa tarde", "boa noite", "ajuda"]:
+        talhoes = db_manager.listar_talhoes(cid)
         qtd = len(talhoes)
+        cult_atual = str(produtor.get("cultura_ativa", "citros")).capitalize()
+        solo_atual = str(produtor.get("tipo_solo_ativo", "latossolo vermelho")).replace("_", " ")
+        org_atual = "Orgânico 🌱" if produtor.get("is_organico_ativo") else "Convencional 🚜"
+
         msg = (
-            f"🌱 *Olá, amigo produtor! Bem-vindo ao AgroAlerta.* 👨‍🌾\n\n"
-            f"Eu sou seu assistente técnico no campo. Estou conectado aos seus sensores e ao tempo de Rio Claro e região.\n\n"
-            f"📱 *Seu ID de Conexão:* `{chat_id}`\n"
-            f"📍 *Talhões Cadastrados:* {qtd}\n\n"
-            f"Comandos rápidos que você pode usar:\n"
-            f"• */irrigar* — Ver se precisa ligar a água hoje\n"
-            f"• */plantar* — Sugestões do que e como plantar neste mês\n"
-            f"• */talhoes* — Ver as áreas cadastradas na sua propriedade\n"
-            f"• */status* — Resumo do solo e clima recente\n\n"
-            f"Ou simplesmente me mande uma pergunta aqui como: *'Vai chover hoje?'* ou *'O que coloco de adubo no meu tomate?'*!"
+            f"🌱 *Olá! Bem-vindo ao AgroAlerta.* 👨‍🌾\n\n"
+            f"Eu sou seu consultor de campo digital, conectado aos sensores da sua terra e ao clima de Rio Claro.\n\n"
+            f"🌾 *Sua Configuração Atual:*\n"
+            f"• Cultura: *{cult_atual}* ({org_atual})\n"
+            f"• Solo: *{solo_atual}* | Talhões mapeados: *{qtd}*\n\n"
+            f"Você pode conversar comigo em *linguagem natural normal*, sem precisar de comandos! Exemplos:\n"
+            f"• *'Preciso ligar a irrigação hoje?'*\n"
+            f"• *'Tem perigo de pragas na minha roça?'*\n"
+            f"• *'Estou plantando tomate orgânico em solo argiloso'* (para mudar sua lavoura)\n"
+            f"• *'O que é bom plantar agora em outubro?'*\n\n"
+            f"Como posso te orientar no campo hoje?"
         )
+        db_manager.salvar_mensagem_telegram(cid, "saida", msg, "saudacao")
         return msg
 
-    # 2. Comando /talhoes
-    if cmd == "/talhoes":
-        talhoes = db_manager.listar_talhoes(chat_id)
-        if not talhoes:
-            return (
-                "📍 *Nenhum talhão cadastrado ainda!*\n\n"
-                "Abra o AgroAlerta no celular, clique em 'Marcar Talhão' e caminhe nos 3 ou 4 cantos da sua roça para delimitar a área."
-            )
-        linhas = ["🚜 *Seus Talhões Cadastrados:*\n"]
-        for t in talhoes:
-            org = "Orgânico 🌱" if t["is_organico"] else "Convencional 🚜"
-            area = f" (~{t['area_ha']:.2f} ha)" if t.get("area_ha") else ""
-            linhas.append(f"• *{t['nome_talhao']}*{area}: Cultura *{t['cultura'].capitalize()}* ({org})")
-        linhas.append("\n_Para coletar dados, basta espetar o sensor no chão do talhão e apertar 'Coletar' no celular._")
-        return "\n".join(linhas)
-
-    # 3. Comando /irrigar
-    if cmd in ["/irrigar", "/rega", "/agua"]:
-        leituras = db_manager.listar_ultimas_leituras(chat_id, limit=3)
-        if not leituras:
-            return (
-                "💧 *Ainda não temos leituras recentes de solo para hoje.*\n\n"
-                "Faça uma leitura com o sensor no talhão pelo celular que eu te digo na hora se precisa regar e quantos milímetros!"
-            )
-        ult = leituras[0]
-        talhao_nome = ult.get("talhao_nome") or "seu talhão"
-        umid = ult.get("umidade", 0.0)
-        return (
-            f"💧 *Situação de Irrigação — {talhao_nome}:*\n\n"
-            f"A última medição registrou *{umid:.1f}% de umidade* no solo.\n"
-            f"Consulte o relatório que enviei logo após a coleta para ver a dosagem exata de água recomendada."
-        )
-
-    # 4. Comando /plantar ou /safra
-    if any(cmd.startswith(x) for x in ["/plantar", "/safra", "o que plantar", "quando plantar"]):
-        rec = recomendar_culturas_para_produtor(
-            lat=RIO_CLARO_LAT,
-            lon=RIO_CLARO_LON,
-            is_organico=True  # padrão orientativo orgânico
-        )
-        top = rec["top_recomendacoes"]
-        linhas = [f"📅 *Planejamento de Safra — Rio Claro e Região (Mês de {rec['mes_referencia']})*\n"]
-        linhas.append("Baseado no clima do ZARC e nas melhores cotações do CEAGESP:\n")
-        for i, item in enumerate(top, 1):
-            linhas.append(f"*{i}º Lugar: {item['nome']}* (Nota {item['score_viabilidade']}/100)")
-            linhas.append(f"  👉 {item['justificativas'][0]}")
-            linhas.append(f"  🗓️ Colheita prevista para: *{item['previsao_colheita']}*")
-            linhas.append(f"  🌱 Espaçamento: _{item['como_plantar']['espacamento']}_")
-            linhas.append(f"  🌾 Adubação: _{item['como_plantar']['adubacao_recomendada']}_\n")
-        return "\n".join(linhas)
-
-    # 5. Dúvida livre do Produtor (Enviada ao LLM com Contexto Real)
-    talhoes = db_manager.listar_talhoes(chat_id)
-    leituras = db_manager.listar_ultimas_leituras(chat_id, limit=3)
-    sugestoes = recomendar_culturas_para_produtor(lat=RIO_CLARO_LAT, lon=RIO_CLARO_LON, is_organico=True)
+    # 5. Dúvida Livre / Consulta em Linguagem Natural com Contexto Completo
+    talhoes = db_manager.listar_talhoes(cid)
+    historico_completo = db_manager.listar_historico_completo(cid, limit=5)
+    sugestoes = recomendar_culturas_para_produtor(lat=RIO_CLARO_LAT, lon=RIO_CLARO_LON, is_organico=produtor.get("is_organico_ativo", True))
 
     resposta = responder_duvida_produtor(
         pergunta=texto_strip,
         contexto_talhoes=talhoes,
-        ultimas_leituras=leituras,
+        ultimas_leituras=historico_completo,
         sugestoes_plantio=sugestoes,
-        api_key_llm=GEMINI_API_KEY
+        api_key_llm=GEMINI_API_KEY,
+        produtor=produtor,
+        historico_completo=historico_completo
     )
+
+    # 6. Registra a resposta enviada
+    db_manager.salvar_mensagem_telegram(cid, "saida", resposta, "resposta_llm")
     return resposta
 
 
@@ -167,16 +170,43 @@ def rodar_polling():
         print("Token do Telegram não configurado ou mock. Configure TELEGRAM_TOKEN para conectar à API oficial.")
         return
 
-    from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, filters
-
     async def handle_cmd(update, context):
         cid = str(update.effective_chat.id)
-        txt = update.message.text
-        resp = processar_mensagem_produtor(cid, txt)
+        user = update.effective_user
+        nome_usuario = user.first_name if user else "Produtor"
+        txt = update.message.text or ""
+        resp = processar_mensagem_produtor(cid, txt, nome_usuario=nome_usuario)
         await update.message.reply_text(resp, parse_mode="Markdown")
 
+    async def handle_location(update, context):
+        cid = str(update.effective_chat.id)
+        loc = update.message.location
+        if loc:
+            lat, lon = loc.latitude, loc.longitude
+            talhoes = db_manager.listar_talhoes(cid)
+            from geo_engine import identificar_talhao
+            talhao = identificar_talhao(lat, lon, talhoes)
+            nome_t = talhao["nome_talhao"] if talhao else "Área de Plantio"
+            diag = db_manager.obter_ultimo_diagnostico_talhao(cid, talhao["id"] if talhao else None)
+            if diag:
+                resp = (
+                    f"📍 *Localização Recebida no Campo ({lat:.4f}, {lon:.4f})*\n"
+                    f"Área Identificada: *{nome_t}* ({str(diag.get('cultura', '')).capitalize()})\n\n"
+                    f"💧 *Situação Hídrica:* {diag.get('status_irrigacao')}\n"
+                    f"Pode me perguntar qualquer dúvida sobre essa lavoura agora!"
+                )
+            else:
+                resp = (
+                    f"📍 *Coordenadas Recebidas:* {lat:.4f}, {lon:.4f}\n"
+                    f"Você está próximo ao talhão: *{nome_t}*.\n"
+                    f"Pode me perguntar: *'Preciso regar aqui hoje?'* ou *'Tem risco de pragas?'*."
+                )
+            await update.message.reply_text(resp, parse_mode="Markdown")
+
     app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(MessageHandler(filters.TEXT, handle_cmd))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_cmd))
+    app.add_handler(MessageHandler(filters.COMMAND, handle_cmd))
+    app.add_handler(MessageHandler(filters.LOCATION, handle_location))
 
     print(f"Bot AgroAlerta iniciado com sucesso! Escutando mensagens...")
     app.run_polling()
