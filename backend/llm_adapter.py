@@ -66,20 +66,18 @@ Termine, quando fizer sentido, com UMA pergunta curta ou oferta de ajuda ("Quer 
 
 def _chamar_gemini_api(prompt_completo: str, api_key: str) -> Optional[str]:
     """
-    Chama a API do Google Gemini via REST com fallback em cascata de modelos:
-    1. gemini-3.5-flash-lite
-    2. gemini-3.1-flash-lite
-    3. gemini-3-flash-preview
-    4. gemini-3.5-flash
+    Chama a API do Google Gemini via REST com modelos rápidos e estáveis:
+    1. gemini-3.1-flash-lite
+    2. gemini-3-flash-preview
+    3. gemini-3.5-flash-lite
     """
     if not api_key:
         return None
 
     modelos = [
-        "gemini-3.5-flash-lite",
-        "gemini-3.1-flash-lite",
         "gemini-3-flash-preview",
-        "gemini-3.5-flash"
+        "gemini-3.1-flash-lite",
+        "gemini-3.5-flash-lite"
     ]
     headers = {"Content-Type": "application/json"}
     payload = {
@@ -89,21 +87,26 @@ def _chamar_gemini_api(prompt_completo: str, api_key: str) -> Optional[str]:
             }
         ],
         "generationConfig": {
-            "temperature": 0.4,
-            "maxOutputTokens": 800
+            "temperature": 0.35,
+            "maxOutputTokens": 1500
         }
     }
 
     for modelo in modelos:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent?key={api_key}"
         try:
-            resp = requests.post(url, json=payload, headers=headers, timeout=8.0)
+            resp = requests.post(url, json=payload, headers=headers, timeout=12.0)
             if resp.status_code == 200:
                 data = resp.json()
                 candidatos = data.get("candidates", [])
                 if candidatos:
                     txt = candidatos[0]["content"]["parts"][0]["text"].strip()
+                    finish_reason = candidatos[0].get("finishReason", "")
+                    # Garante que a resposta não esteja truncada pela metade
                     if txt and len(txt) > 20:
+                        if finish_reason == "MAX_TOKENS" or txt.endswith("*") or txt.endswith("•"):
+                            logger.warning(f"Resposta com modelo {modelo} veio truncada ({finish_reason}). Tentando próximo modelo.")
+                            continue
                         return txt
             else:
                 logger.debug(f"Gemini {modelo} HTTP {resp.status_code}: {resp.text[:120]}")
@@ -389,9 +392,18 @@ def responder_duvida_produtor(
 
     dt_leitura = diag_recente.get("leitura_data", "Recente")
 
+    clima_dict = diag_recente.get("clima") or {}
+    temp_ar = clima_dict.get("temperatura_2m_celsius", 24.5)
+    ur_ar = clima_dict.get("umidade_relativa_2m_pct", 55.0)
+    chuva_6h = clima_dict.get("chuva_prevista_6h_mm", 0.0)
+    prob_chuva = clima_dict.get("probabilidade_chuva_6h_pct", 0.0)
+    vento_kmh = clima_dict.get("velocidade_vento_10m_kmh", 12.0)
+    clima_resumo = f"Temperatura ~{temp_ar:.1f}°C, umidade do ar {ur_ar:.0f}%, chuva prevista 6h: {chuva_6h:.1f} mm (probabilidade {prob_chuva:.0f}%), vento {vento_kmh:.1f} km/h"
+
     secao_lavoura = (
         f"• Produção: {cult_nome} {regime_txt}, solo {solo_txt}, cerca de {area_val:.1f} ha.\n"
         f"• Leitura mais recente ({dt_leitura}): umidade do solo {umid_val:.1f}%, pH {ph_val:.1f}.\n"
+        f"• Clima atual e previsão para Rio Claro: {clima_resumo}.\n"
         f"• Recomendação dada: {status_irrig.lower()}, em torno de {vol_litros:,.0f} litros para o talhão todo.\n"
         f"• Pragas e doenças em atenção: {pragas_txt}."
     )
@@ -599,7 +611,23 @@ def _gerar_resposta_lider_politico(
             f"Se você já tem o resultado da sua análise de laboratório ou quer saber se precisa de calcário, me envie os números que analiso para você! 👍"
         )
 
-    # 5. DÚVIDAS SOBRE SAFRA / PLANTIO / ÉPOCA / O QUE PLANTAR / MERCADO / VALORES
+    # 5. DÚVIDAS SOBRE CLIMA / PREVISÃO DO TEMPO / TEMPERATURA / VENTO
+    if any(k in p_lower for k in ["tempo", "previsao", "previsão", "clima", "calor", "frio", "vento", "temperatura"]):
+        clima_d = diag.get("clima") or {} if diag else {}
+        temp_ar = clima_d.get("temperatura_2m_celsius", 25.0)
+        ur_ar = clima_d.get("umidade_relativa_2m_pct", 55.0)
+        chuv_6h = clima_d.get("chuva_prevista_6h_mm", 0.0)
+        prob_ch = clima_d.get("probabilidade_chuva_6h_pct", 0.0)
+        v_kmh = clima_d.get("velocidade_vento_10m_kmh", 12.0)
+        return (
+            f"O tempo segue firme em Rio Claro hoje, com temperatura em torno de *{temp_ar:.1f}°C* e umidade do ar em *{ur_ar:.0f}%*.\n\n"
+            f"• 💧 *Chuva:* Probabilidade de *{prob_ch:.0f}%* nas próximas horas (sem volume expressivo previsto).\n"
+            f"• 💨 *Vento:* Soprando a cerca de *{v_kmh:.1f} km/h*, favorável para o manejo e pulverizações matinais.\n"
+            f"• 🌱 *Impacto no Talhão:* Como a terra está com *{diag.get('umidade', 22.0):.0f}% de umidade*, a evaporação segue moderada.\n\n"
+            f"Quer que eu te avise se entrar alguma frente de chuva para Rio Claro?"
+        )
+
+    # 6. DÚVIDAS SOBRE SAFRA / PLANTIO / ÉPOCA / O QUE PLANTAR / MERCADO / VALORES
     if any(k in p_lower for k in ["plantar", "safra", "epoca", "época", "semente", "o que plantar", "o que cultivar", "preço", "preco", "cotação", "cotacao", "mercado", "lucro", "rentabilidade", "quanto vale"]):
         is_org = produtor.get("is_organico_ativo", True) if produtor else True
         regime_label = "Orgânico Certificado 🌱" if is_org else "Convencional 🚜"

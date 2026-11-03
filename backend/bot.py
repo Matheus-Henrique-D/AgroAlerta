@@ -126,6 +126,7 @@ def obter_ou_gerar_diagnostico_ativo(cid: str, produtor: Dict[str, Any]) -> Dict
             "trava_chuva_acionada": bool(irrig.get("trava_seguranca_meteorologica", {}).get("acionada", False)),
             "umidade": 22.0,
             "ph": 6.3,
+            "clima": rel.get("analise_microclimatica_open_meteo", {}),
             "pragas_especificas": rel.get("pragas_especificas_cultura", []),
             "prescricao_insumos": rel.get("plano_de_acao_prescritivo", {}).get("acoes_e_insumos_recomendados", [])
         }
