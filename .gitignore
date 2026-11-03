@@ -20,3 +20,10 @@ config.js
 config.py
 backend/config.py
 backend/config.local.py
+
+# Arquivos de teste e áudios temporários
+*.mp3
+*.wav
+*.ogg
+scratch_*
+temp_voice_*

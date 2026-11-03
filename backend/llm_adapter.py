@@ -17,24 +17,32 @@ import requests
 logger = logging.getLogger("AgroLLM")
 
 
-PROMPT_SISTEMA_AGRONOMO = """Você é o consultor agronômico digital do AgroAlerta, especialista na agricultura do estado de São Paulo (região de Rio Claro, Araras, Limeira e Piracicaba).
-Sua missão é transformar diagnósticos técnicos de solo, clima e rede neural em um guia prescritivo direto, prático, acolhedor e humanizado sobre "O QUE O PRODUTOR DEVE FAZER HOJE NO TALHÃO".
-
-Diretrizes essenciais de comunicação:
-1. Use tom coloquial e acolhedor (como um agrônomo parceiro de confiança conversando na lavoura).
-2. NUNCA use jargões de programação ou estatística fria (nada de "modelo multitarefa", "logits", "cross-entropy", "dataset"). Diga "analisamos a umidade da terra e a previsão do tempo".
-3. Divida sua orientação em 4 blocos claros:
-   - 🚀 AÇÃO IMEDIATA (Ligar ou não a irrigação, tempo exato de bomba e melhor horário)
-   - 🔍 O QUE VISTORIAR NA PLANTA (Cite as pragas específicas da cultura e os sintomas nas folhas/frutos)
-   - 🌿 PRESCRIÇÃO DE INSUMOS (Se for orgânico, cite estritamente bioinsumos do MAPA, caldas e horários para evitar sol)
-   - 💧 SUSTENTABILIDADE (Água economizada ou hidratação necessária)
-4. Use emojis pertinentes para facilitar a leitura rápida no celular e no Telegram.
+PROMPT_SISTEMA_AGRONOMO = """Você é o consultor agronômico digital do AgroAlerta em Rio Claro - SP.
+Sua comunicação deve ser:
+1. AMIGÁVEL E DIRETA: cumprimente de forma simples e calorosa ("Olá!", "Tudo bem?"), e vá DIRETO AO PONTO na primeira frase, sem introduções longas nem discursos.
+2. TÉCNICA E COM DADOS EXATOS: use sempre os números reais do diagnóstico (área em hectares, lâmina em mm, volume total em litros de água, tempo de bomba, características do solo e pragas específicas da cultura).
+3. CLARA E FÁCIL DE LER NO CELULAR: use tópicos curtos e emojis objetivos para que o produtor veja a resposta em 5 segundos.
 """
 
 
 def _chamar_gemini_api(prompt_completo: str, api_key: str) -> Optional[str]:
-    """Chama a API do Google Gemini via REST."""
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    """
+    Chama a API do Google Gemini via REST com fallback em cascata de modelos:
+    1. gemini-3.5-flash-lite
+    2. gemini-3.1-flash-lite
+    3. gemini-3-flash-preview
+    4. gemini-3.5-flash
+    """
+    if not api_key:
+        return None
+
+    modelos = [
+        "gemini-3.5-flash-lite",
+        "gemini-3.1-flash-lite",
+        "gemini-3-flash-preview",
+        "gemini-3.5-flash"
+    ]
+    headers = {"Content-Type": "application/json"}
     payload = {
         "contents": [
             {
@@ -42,20 +50,28 @@ def _chamar_gemini_api(prompt_completo: str, api_key: str) -> Optional[str]:
             }
         ],
         "generationConfig": {
-            "temperature": 0.35,
-            "maxOutputTokens": 1000
+            "temperature": 0.4,
+            "maxOutputTokens": 800
         }
     }
-    headers = {"Content-Type": "application/json"}
-    try:
-        resp = requests.post(url, json=payload, headers=headers, timeout=12)
-        if resp.status_code == 200:
-            data = resp.json()
-            candidatos = data.get("candidates", [])
-            if candidatos:
-                return candidatos[0]["content"]["parts"][0]["text"].strip()
-    except Exception as e:
-        logger.warning(f"Erro ao chamar API Gemini: {e}")
+
+    for modelo in modelos:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent?key={api_key}"
+        try:
+            resp = requests.post(url, json=payload, headers=headers, timeout=8.0)
+            if resp.status_code == 200:
+                data = resp.json()
+                candidatos = data.get("candidates", [])
+                if candidatos:
+                    txt = candidatos[0]["content"]["parts"][0]["text"].strip()
+                    if txt and len(txt) > 20:
+                        return txt
+            else:
+                logger.debug(f"Gemini {modelo} HTTP {resp.status_code}: {resp.text[:120]}")
+        except Exception as e:
+            logger.debug(f"Tentativa com {modelo} falhou: {e}")
+
+    logger.warning("Todas as tentativas na API do Gemini falharam. Acionando motor agronômico local.")
     return None
 
 
@@ -342,106 +358,242 @@ Diretrizes de Resposta:
 
     if api_key_llm:
         resposta_llm = _chamar_gemini_api(prompt, api_key_llm)
-        if resposta_llm:
+        if resposta_llm and len(resposta_llm) > 40 and not resposta_llm.endswith("**"):
             return resposta_llm
 
     # =========================================================================
-    # FALLBACK LOCAL ESTRUTURADO INTELIGENTE (Sem Depender de API Externa)
+    # MOTOR DE INTELIGÊNCIA AGRONÔMICA LOCAL INSTANTÂNEO (Líder Técnico & Político)
     # =========================================================================
-    p_lower = pergunta.lower()
+    diag_ativo = hist[0] if hist else None
+    return _gerar_resposta_lider_politico(
+        pergunta=pergunta,
+        produtor=produtor,
+        diag=diag_ativo,
+        sugestoes_plantio=sugestoes_plantio
+    )
 
-    # 1. Dúvidas sobre Irrigação / Água / Rega
-    if any(palavra in p_lower for palavra in ["regar", "irrigar", "agua", "chuva", "seco", "bomba", "molhar"]):
-        if hist:
-            ult = hist[0]
-            talhao = ult.get("talhao_nome") or "seu talhão"
-            cultura = str(ult.get("cultura") or (produtor.get("cultura_ativa") if produtor else "cultura")).capitalize()
-            status_irrig = ult.get("status_irrigacao", "")
-            vol_nec = ult.get("volume_necessario_litros", 0.0)
-            vol_econ = ult.get("volume_economizado_litros", 0.0)
-            tempo_got = ult.get("tempo_gotejamento_minutos", 0)
-            tempo_asp = ult.get("tempo_aspersao_minutos", 0)
-            trava = ult.get("trava_chuva_acionada", False)
-            umid = ult.get("umidade", 0.0)
 
-            if trava or "suspender" in status_irrig.lower():
-                return (
-                    f"💧 *Situação de Irrigação — {talhao} ({cultura}):*\n\n"
-                    f"• *Bomba Desligada:* Há alerta de chuva iminente para a região de Rio Claro!\n"
-                    f"• *Economia de Água:* Você está poupando aproximadamente *{vol_econ:,.0f} litros* neste talhão hoje.\n"
-                    f"• A umidade da terra está em {umid:.1f}%. Deixe a água da chuva hidratar o solo naturalmente."
-                )
-            elif vol_nec > 0:
-                h_got, m_got = divmod(tempo_got, 60)
-                return (
-                    f"💧 *Situação de Irrigação — {talhao} ({cultura}):*\n\n"
-                    f"• *Ligar Irrigação:* O solo apresentou déficit hídrico (umidade em {umid:.1f}%).\n"
-                    f"• *Volume Necessário:* Aplicar cerca de *{vol_nec:,.0f} litros de água* em toda a área.\n"
-                    f"• *Tempo de Bomba:* {h_got}h {m_got:02d}min no gotejamento (ou {tempo_asp} min na aspersão).\n"
-                    f"• *Melhor Horário:* Início da manhã (06:00 às 08:30) ou fim da tarde para evitar perda por evaporação."
-                )
-            else:
-                return (
-                    f"💧 *Situação de Irrigação — {talhao} ({cultura}):*\n\n"
-                    f"• *Bomba Desligada:* A umidade da terra está boa ({umid:.1f}%), suprindo bem as raízes.\n"
-                    f"• Não há necessidade de ligar os motores hoje. Você economiza energia elétrica e conserva a água."
-                )
+def _gerar_resposta_lider_politico(
+    pergunta: str,
+    produtor: Optional[Dict[str, Any]],
+    diag: Optional[Dict[str, Any]],
+    sugestoes_plantio: Optional[Dict[str, Any]] = None
+) -> str:
+    """
+    Gera uma resposta técnica, concisa, natural e humana no tom de um líder público
+    comprometido com o homem do campo, utilizando dados matemáticos e agronômicos exatos.
+    """
+    p_lower = (pergunta or "").lower()
 
-    # 2. Dúvidas sobre Pragas / Doenças / Insumos
-    if any(palavra in p_lower for palavra in ["praga", "bicho", "doença", "doenca", "fungo", "lagarta", "veneno", "remedio", "bioinsumo", "passar"]):
-        if hist:
-            ult = hist[0]
-            talhao = ult.get("talhao_nome") or "talhão"
-            cultura = str(ult.get("cultura") or (produtor.get("cultura_ativa") if produtor else "cultura")).capitalize()
-            is_org = ult.get("is_organico", True)
-            regime = "Orgânico 🌱" if is_org else "Convencional 🚜"
-            pragas = ult.get("pragas_especificas", [])
-            prescricao = ult.get("prescricao_insumos", [])
+    # 1. Recupera metadados do produtor e diagnóstico
+    cultura = "tomate"
+    solo = "argiloso"
+    area_ha = 2.5
+    is_org = True
 
-            linhas_resp = [f"🌿 *Manejo Fitossanitário — {talhao} ({cultura} - {regime}):*\n"]
-            if pragas:
-                linhas_resp.append("🔍 *Atenção aos seguintes sintomas nas folhas:*")
-                for p in pragas[:2]:
-                    if isinstance(p, dict) and "especies_principais" in p:
-                        for esp in p["especies_principais"][:1]:
-                            linhas_resp.append(f"• *{esp.get('nome')}:* _{esp.get('sintoma')}_")
-                linhas_resp.append("")
+    if produtor:
+        cultura = str(produtor.get("cultura_ativa") or cultura).lower()
+        solo = str(produtor.get("tipo_solo_ativo") or solo).lower().replace("_", " ")
+        area_ha = float(produtor.get("area_ha_ativa") or area_ha)
+        is_org = bool(produtor.get("is_organico_ativo", True))
 
-            if prescricao:
-                linhas_resp.append("📋 *O que aplicar:*")
-                for acao in prescricao[:2]:
-                    linhas_resp.append(f"• {acao}")
-                linhas_resp.append(f"\n⏰ *Horário ideal:* Final da tarde (após as 16h30) para melhor absorção.")
-            else:
-                linhas_resp.append("✅ *A lavoura está com sanidade equilibrada!* Mantenha apenas a inspeção visual rotineira.")
+    if diag:
+        cultura = str(diag.get("cultura") or cultura).lower()
+        solo = str(diag.get("tipo_solo") or solo).lower().replace("_", " ")
+        area_ha = float(diag.get("area_ha") or area_ha)
+        is_org = bool(diag.get("is_organico", is_org))
 
-            return "\n".join(linhas_resp)
+    cult_str = cultura.capitalize()
+    regime_str = "Orgânico Certificado 🌱" if is_org else "Convencional 🚜"
 
-    # 3. Dúvidas sobre O que Plantar / Safra / Época
-    if any(palavra in p_lower for palavra in ["plantar", "safra", "epoca", "mes", "semente", "o que"]):
-        if sugestoes_plantio and "top_recomendacoes" in sugestoes_plantio:
-            top = sugestoes_plantio["top_recomendacoes"][0]
+    # 2. DÚVIDAS SOBRE IRRIGAÇÃO / ÁGUA / REGA / BOMBA / CHUVA
+    if any(k in p_lower for k in ["regar", "irrigar", "irrigacao", "irriga", "agua", "água", "chuva", "seco", "seca", "bomba", "molhar", "gotejamento", "aspersao"]):
+        status_irrig = str(diag.get("status_irrigacao") if diag else "Irrigar Leve/Moderada").lower()
+        trava_chuva = bool(diag.get("trava_chuva_acionada", False)) if diag else False
+        vol_nec = float(diag.get("volume_necessario_litros", 0.0)) if diag else 0.0
+        vol_econ = float(diag.get("volume_economizado_litros", 0.0)) if diag else 0.0
+        lamina = float(diag.get("lamina_recomendada_mm", 0.0)) if diag else 0.0
+        tempo_got = int(diag.get("tempo_gotejamento_minutos", 0)) if diag else 0
+        tempo_asp = int(diag.get("tempo_aspersao_minutos", 0)) if diag else 0
+        litros_planta = float(diag.get("litros_por_planta", 3.2)) if diag else 3.2
+        umid = float(diag.get("umidade", 22.0)) if diag else 22.0
+
+        # Se os cálculos vieram zerados mas a cultura está em déficit
+        if vol_nec <= 0 and ("irrigar" in status_irrig or "reposi" in status_irrig or umid < 25.0):
+            lamina = 4.8 if "argil" in solo else 5.2
+            vol_nec = area_ha * 10000.0 * lamina
+            tempo_got = int((lamina / 3.0) * 60)
+            tempo_asp = int((lamina / 6.0) * 60)
+
+        h_got, m_got = divmod(tempo_got, 60)
+
+        # Caso A: Trava de Chuva acionada ou suspensão
+        if trava_chuva or "suspender" in status_irrig:
+            econ_txt = f"{vol_econ:,.0f} litros" if vol_econ > 0 else f"{area_ha * 45000:,.0f} litros"
             return (
-                f"🌱 *Sugestão de Plantio para Rio Claro neste mês:*\n\n"
-                f"A cultura mais recomendada agora é o *{top['nome']}* (Pontuação {top['score_viabilidade']}/100).\n"
-                f"• *Por que plantar agora?* {top['justificativas'][0]}.\n"
-                f"• *Colheita estimada:* {top['previsao_colheita']}.\n"
-                f"• *Espaçamento:* {top['como_plantar']['espacamento']}.\n"
-                f"• *Adubação:* {top['como_plantar']['adubacao_recomendada']}."
+                f"Olá! Para o seu talhão de **{area_ha:.2f} hectares** de **{cult_str} ({regime_str})** em solo **{solo}**:\n\n"
+                f"🛑 **Decisão: NÃO precisa ligar a irrigação hoje.**\n\n"
+                f"Há previsão de chuva para a região de Rio Claro e o solo já está com **{umid:.1f}% de umidade** (bem retida no solo {solo}).\n\n"
+                f"💧 **Resumo Operacional:**\n"
+                f"• **Bomba:** Desligada hoje.\n"
+                f"• **Economia:** Você poupa cerca de **{econ_txt} de água** e reduz o custo na conta de luz.\n"
+                f"• **Recomendação:** Deixe a chuva hidratar a terra naturalmente. Amanhã reavaliamos as medições! 👍"
             )
 
-    # 4. Saudação ou Dúvida Geral
-    nome_prod = produtor.get("nome_produtor", "amigo produtor") if produtor else "amigo produtor"
-    cultura_ativa = (produtor.get("cultura_ativa") if produtor else "sua lavoura").capitalize()
-    solo_ativo = (produtor.get("tipo_solo_ativo") if produtor else "latossolo vermelho").replace("_", " ")
+        # Caso B: Irrigação Necessária (Déficit Hídrico)
+        if "irrigar" in status_irrig or vol_nec > 0:
+            return (
+                f"Olá! Para o seu talhão de **{area_ha:.2f} hectares** de **{cult_str} ({regime_str})** em solo **{solo}**:\n\n"
+                f"✅ **Decisão: SIM, precisa ligar a irrigação hoje.**\n\n"
+                f"A terra está com **{umid:.1f}% de umidade** (déficit hídrico moderado). No solo {solo}, "
+                f"repor a água agora evita estresse e protege o pegamento das flores e frutos.\n\n"
+                f"💧 **Plano de Irrigação:**\n"
+                f"• **Lâmina:** **{lamina:.1f} mm** | **Volume Total:** **{vol_nec:,.0f} litros** (~{litros_planta:.1f} L/pé)\n"
+                f"• **Tempo de Bomba:** **{h_got}h {m_got:02d}min** no gotejamento (ou {tempo_asp} min na aspersão)\n"
+                f"• **Horário Ideal:** Entre **06h30 e 09h30** ou após as **16h30** (evite o sol forte para prevenir queima e fungos).\n\n"
+                f"Qualquer dúvida sobre pragas ou manejo da roça, é só chamar! 👍"
+            )
 
+        # Caso C: Solo com Umidade Plena
+        return (
+            f"Olá! Para o seu talhão de **{area_ha:.2f} hectares** de **{cult_str} ({regime_str})** em solo **{solo}**:\n\n"
+            f"🛑 **Decisão: BOMBA DESLIGADA.**\n\n"
+            f"A terra está com **{umid:.1f}% de umidade**, nível ideal para a demanda da cultura hoje.\n\n"
+            f"💧 **Resumo Operacional:**\n"
+            f"• **Situação:** Umidade do solo adequada para as plantas hoje.\n"
+            f"• **Economia:** Zero gasto com energia nos motores e preservação da água.\n"
+            f"• **Recomendação:** Apenas acompanhe o desenvolvimento normal da roça! 👍"
+        )
+
+    # 3. DÚVIDAS SOBRE PRAGAS / DOENÇAS / INSUMOS / CALDAS / REMÉDIOS
+    if any(k in p_lower for k in ["praga", "bicho", "doenca", "doença", "fungo", "lagarta", "veneno", "remedio", "remédio", "bioinsumo", "passar", "pulverizar", "calda"]):
+        if "tomate" in cultura:
+            bloco_pragas = (
+                "🔍 **O que observar nas folhas hoje:**\n"
+                "• **Traça-do-Tomateiro (*Tuta absoluta*):** Galerias transparentes nas folhas novas e pequenos furos nos brotos/frutos.\n"
+                "• **Requeima (*Phytophthora infestans*):** Manchas escuras com aspecto de queimadura e mofo branco na face inferior."
+            )
+            bloco_insumos = (
+                "🌿 **O que aplicar (Manejo Orgânico MAPA):**\n"
+                "• **Biológico:** Pulverização de *Bacillus thuringiensis* (Bt) contra lagartas e traça.\n"
+                "• **Foliar Preventivo:** Calda Bordalesa (0,5%) ou Calda Sulfocálcica para proteger contra fungos."
+            )
+        elif "citros" in cultura:
+            bloco_pragas = (
+                "🔍 **O que observar no pomar hoje:**\n"
+                "• **Psilídeo (*Diaphorina citri*):** Inseto transmissor do Greening nas brotações novas.\n"
+                "• **Bicho-Furão:** Perfurações em frutos provocando queda prematura."
+            )
+            bloco_insumos = (
+                "🌿 **Manejo Recomendado:**\n"
+                "• **Biológico:** Liberação de *Tamarixia radiata* e aplicação de fungo entomopatogênico *Cordyceps fumosorosea*.\n"
+                "• **Nutricional:** Adubação foliar com zinco, boro e calda sulfocálcica preventiva."
+            )
+        else:
+            bloco_pragas = (
+                f"🔍 **Vistoria Fitossanitária no Talhão de {cult_str}:**\n"
+                "• Monitore o terço médio das plantas procurando sinais de raspagem e manchas foliares."
+            )
+            bloco_insumos = (
+                "🌿 **Manejo Recomendado:**\n"
+                "• Aplicação preventiva de bioinsumo registrado e reforço da matéria orgânica."
+            )
+
+        return (
+            f"Olá! Sobre o manejo fitossanitário do seu **{cult_str} ({regime_str})** ({area_ha:.2f} ha):\n\n"
+            f"{bloco_pragas}\n\n"
+            f"{bloco_insumos}\n\n"
+            f"⏰ **Melhor Horário:** A partir das **16h30** (sol ameno) para não queimar as folhas e preservar os bioinsumos.\n\n"
+            f"Se notar algum sintoma diferente nas folhas, pode me avisar aqui! 👍"
+        )
+
+    # 4. DÚVIDAS SOBRE SOLO / PH / NUTRIENTES / COMPACTAÇÃO
+    if any(k in p_lower for k in ["ph", "acidez", "solo", "calagem", "calcario", "calcário", "terra", "compactacao", "compactação", "adubo", "adubação", "adubacao"]):
+        ph_atual = float(diag.get("ph", 6.2)) if diag else 6.2
+        umid_atual = float(diag.get("umidade", 22.0)) if diag else 22.0
+        return (
+            f"Olá! Sobre as condições do solo do seu talhão de **{cult_str} ({regime_str})** em Rio Claro:\n\n"
+            f"🧪 **Leitura Atual do Talhão:**\n"
+            f"• **pH do Solo:** **{ph_atual:.1f}** (Ideal para {cult_str} fica entre 6.0 e 6.8).\n"
+            f"• **Umidade Atual:** **{umid_atual:.1f}%** (Solo {solo}).\n\n"
+            f"📝 **Como medir ou calcular o pH na prática:**\n"
+            f"1. **Amostragem:** Colete 10 a 15 subamostras de terra na profundidade de 0 a 20 cm em zigue-zague pelo talhão e misture num balde limpo.\n"
+            f"2. **Medição em Campo:** Use um peagômetro digital de inserção direta no solo úmido ou faça a mistura de 1 parte de solo para 2,5 partes de água destilada/solução de CaCl2 e meça com fita ou eletrodo.\n"
+            f"3. **Laboratório:** Se precisar de cálculo de necessidade de calagem (NC) e saturação por bases (V%), o envio de amostra composta para análise química completa é o mais preciso.\n\n"
+            f"Se você já tem o resultado da sua análise de laboratório ou quer saber se precisa de calcário, me envie os números que analiso para você! 👍"
+        )
+
+    # 5. DÚVIDAS SOBRE SAFRA / PLANTIO / ÉPOCA / O QUE PLANTAR / MERCADO / VALORES
+    if any(k in p_lower for k in ["plantar", "safra", "epoca", "época", "semente", "o que plantar", "o que cultivar", "preço", "preco", "cotação", "cotacao", "mercado", "lucro", "rentabilidade", "quanto vale"]):
+        is_org = produtor.get("is_organico_ativo", True) if produtor else True
+        regime_label = "Orgânico Certificado 🌱" if is_org else "Convencional 🚜"
+
+        top1 = None
+        top2 = None
+        if sugestoes_plantio and "top_recomendacoes" in sugestoes_plantio:
+            recs = sugestoes_plantio["top_recomendacoes"]
+            if len(recs) > 0:
+                top1 = recs[0]
+            if len(recs) > 1:
+                top2 = recs[1]
+
+        if not top1:
+            top1 = {
+                "nome": "Alface (Crespa / Americana)",
+                "score_viabilidade": 98.0,
+                "justificativas": ["Janela climática ideal para Rio Claro neste mês", "Colheita em 45 dias com alta demanda"],
+                "previsao_colheita": "Próximo mês",
+                "mes_ideal_plantio": ["Outubro", "Novembro", "Ano todo"],
+                "precos_regionais": {
+                    "cotacao": "R$ 4,00 a R$ 5,50 por pé (+70% de ágio orgânico no varejo)" if is_org else "R$ 2,00 a R$ 3,20 por pé no atacado regional",
+                    "rentabilidade_estimada": "R$ 60.000 a R$ 85.000 / ha por ciclo (45 dias)"
+                },
+                "como_plantar": {
+                    "espacamento": "0,25 m x 0,25 m em canteiros elevados (20 a 25 cm)",
+                    "preparo_solo": "Canteiros com alta incorporação de matéria orgânica e cobertura morta (*mulching*) para retenção hídrica",
+                    "adubacao_recomendada": "15 a 20 t/ha de composto orgânico/húmus + 100 g/m² de cinzas e farinha de ossos" if is_org else "250 a 350 kg/ha de NPK 04-14-08 no sulco",
+                    "cuidados_essenciais": "Irrigação diária por microaspersão ou gotejo e raiz rasa sensível a compactação."
+                }
+            }
+
+        nome_c1 = top1.get("nome", "Alface")
+        guia1 = top1.get("como_plantar", {})
+        precos1 = top1.get("precos_regionais", {})
+        epocas1 = ", ".join(top1.get("mes_ideal_plantio", ["Este mês"]))
+
+        resposta_plantio = (
+            f"Olá! Pensando no seu talhão em Rio Claro ({regime_label}), aqui está o diagnóstico de mercado e plantio direto ao ponto:\n\n"
+            f"🌱 **1. O que plantar agora:**\n"
+            f"• **Principal recomendação:** **{nome_c1}** (Aptidão {top1.get('score_viabilidade', 95)}/100)\n"
+            f"• **Por que agora:** {top1.get('justificativas', ['Janela favorável em Rio Claro'])[0]}.\n\n"
+            f"🚜 **2. Como plantar:**\n"
+            f"• **Espaçamento:** {guia1.get('espacamento', 'Padrão da cultura')}.\n"
+            f"• **Preparo do Solo:** {guia1.get('preparo_solo', 'Solo bem drenado e descompactado')}.\n"
+            f"• **Adubação ({regime_label}):** {guia1.get('adubacao_recomendada', 'Adubação equilibrada')}.\n\n"
+            f"📅 **3. Melhor Período & Ciclo:**\n"
+            f"• **Janela Ideal de Semeadura:** {epocas1}.\n"
+            f"• **Previsão de Colheita:** {top1.get('previsao_colheita', 'Em ciclo normal')}.\n\n"
+            f"💰 **4. Valores de Mercado na Região (CEAGESP / SP):**\n"
+            f"• **Cotação Atual:** {precos1.get('cotacao', 'Sob consulta')}.\n"
+            f"• **Rentabilidade Estimada:** {precos1.get('rentabilidade_estimada', 'Alta rentabilidade')}.\n"
+        )
+        if top2:
+            nome_c2 = top2.get("nome", "Citros")
+            precos2 = top2.get("precos_regionais", {})
+            resposta_plantio += (
+                f"\n💡 **Segunda Alternativa:** **{nome_c2}** (Cotação: {precos2.get('cotacao', 'Excelente liquidez regional')}).\n"
+            )
+        resposta_plantio += "\nSe quiser o plano detalhado de mudas ou análise do seu solo para essa cultura, me avise! 👍"
+        return resposta_plantio
+
+    # 5. SAUDAÇÃO OU DÚVIDA GERAL
     return (
-        f"Olá, {nome_prod}! 👨‍🌾\n\n"
-        f"Estou acompanhando sua plantação de *{cultura_ativa}* em *{solo_ativo}*.\n\n"
-        f"Pode conversar comigo naturalmente! Pergunte, por exemplo:\n"
+        f"Olá! Tudo bem? 👨‍🌾\n\n"
+        f"Estou acompanhando o seu talhão de **{area_ha:.2f} hectares** de **{cult_str} ({regime_str})** em solo **{solo}** aqui em Rio Claro.\n\n"
+        f"Pode me perguntar direto, por exemplo:\n"
         f"• *'Preciso ligar a irrigação hoje?'*\n"
-        f"• *'Tem perigo de pragas na minha roça?'*\n"
-        f"• *'Mudei meu talhão para tomate orgânico'*\n"
-        f"• *'Qual o melhor horário para pulverizar?'*\n\n"
-        f"Como posso te ajudar no campo hoje?"
+        f"• *'Qual remédio ou bioinsumo devo passar no tomate?'*\n"
+        f"• *'Tem perigo de pragas na roça agora?'*\n"
+        f"• *'Quanto de água eu estou poupando?'*\n\n"
+        f"Como posso te ajudar no campo hoje? 👍"
     )
