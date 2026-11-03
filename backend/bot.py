@@ -251,20 +251,46 @@ def processar_mensagem_produtor(chat_id: str, texto: str, nome_usuario: Optional
     return resposta
 
 
+def sanitizar_markdown_telegram(texto: str) -> str:
+    """
+    Higieniza mensagens para compatibilidade com o parser Markdown do Telegram:
+    1. Troca marcadores de lista (* ou -) no início de linha por bullet limpo '• '
+       (evita que o parser ache que abriu negrito sem fechar).
+    2. Converte **negrito duplo** em *negrito simples* suportado pelo Telegram Markdown.
+    3. Protege quebras de parágrafo e listas sem corromper entidades.
+    """
+    if not texto:
+        return ""
+    import re
+    # Converte marcadores soltos de lista/tópicos no início da linha por bullet
+    t = re.sub(r'(?m)^(\s*)[*-]\s+', r'\1• ', texto)
+    # Converte negrito duplo (padrão de LLMs) em negrito único do Markdown V1 do Telegram
+    t = re.sub(r'\*\*(.+?)\*\*', r'*\1*', t)
+    return t
+
+
 async def enviar_mensagem_telegram(chat_id: str, mensagem: str):
-    """Envia mensagem assíncrona para o produtor no Telegram via Bot API."""
+    """Envia mensagem assíncrona para o produtor no Telegram via Bot API com fallback robusto."""
     if not TOKEN or TOKEN == "mock_token":
         logger.info(f"[SIMULAÇÃO TELEGRAM para {chat_id}]:\n{mensagem}")
         return True
 
+    msg_sanitizada = sanitizar_markdown_telegram(mensagem)
     try:
         from telegram import Bot
         bot = Bot(token=TOKEN)
-        await bot.send_message(chat_id=chat_id, text=mensagem, parse_mode="Markdown")
+        await bot.send_message(chat_id=chat_id, text=msg_sanitizada, parse_mode="Markdown")
         return True
-    except Exception as e:
-        logger.error(f"Erro ao enviar mensagem Telegram: {e}")
-        return False
+    except Exception as e_md:
+        logger.warning(f"Aviso ao enviar com Markdown ({e_md}), enviando em texto puro.")
+        try:
+            from telegram import Bot
+            bot = Bot(token=TOKEN)
+            await bot.send_message(chat_id=chat_id, text=mensagem)
+            return True
+        except Exception as e:
+            logger.error(f"Erro definitivo ao enviar mensagem Telegram: {e}")
+            return False
 
 
 def notificar_analise_leitura(chat_id: str, relatorio_ia: Dict[str, Any]):
@@ -299,9 +325,11 @@ def rodar_polling():
         nome_usuario = user.first_name if user else "Produtor"
         txt = update.message.text or ""
         resp = processar_mensagem_produtor(cid, txt, nome_usuario=nome_usuario)
+        resp_fmt = sanitizar_markdown_telegram(resp)
         try:
-            await update.message.reply_text(resp, parse_mode="Markdown")
-        except Exception:
+            await update.message.reply_text(resp_fmt, parse_mode="Markdown")
+        except Exception as err:
+            logger.debug(f"Falha ao enviar resposta com Markdown ({err}), enviando sem parse_mode.")
             await update.message.reply_text(resp)
 
     async def handle_location(update, context):
@@ -382,10 +410,12 @@ def rodar_polling():
                 resp_agro = processar_mensagem_produtor(cid, texto_pergunta, nome_usuario=nome_usuario)
                 resp_texto = f"🎙️ *Entendi:* \"_{texto_pergunta}_\"\n\n{resp_agro}"
 
-            # 5. Resposta sempre por TEXTO
+            # 5. Resposta sempre por TEXTO com formatação limpa
+            resp_fmt = sanitizar_markdown_telegram(resp_texto)
             try:
-                await update.message.reply_text(resp_texto, parse_mode="Markdown")
-            except Exception:
+                await update.message.reply_text(resp_fmt, parse_mode="Markdown")
+            except Exception as err:
+                logger.debug(f"Falha ao enviar resposta de voz com Markdown ({err}), enviando em texto simples.")
                 await update.message.reply_text(resp_texto)
 
         except Exception as err:
