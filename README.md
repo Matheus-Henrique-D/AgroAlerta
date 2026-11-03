@@ -8,15 +8,26 @@ O sistema atende com precisão a produtores do interior paulista (calibrado para
 
 ## 📌 Sumário
 1. [Principais Inovações e Funcionalidades](#-principais-inovações-e-funcionalidades)
-2. [Fluxo Operacional de Campo](#-fluxo-operacional-de-campo)
-3. [Saída Enriquecida & Síntese Prescritiva por LLM](#-saída-enriquecida--síntese-prescritiva-por-llm)
-4. [Arquitetura da Rede Neural Multitarefa](#-arquitetura-da-rede-neural-multitarefa)
-5. [Diferenciação para Produtores Orgânicos](#-diferenciação-para-produtores-orgânicos)
-6. [Adaptação Regional para Rio Claro - SP](#-adaptação-regional-para-rio-claro---sp)
-7. [Assistente no Telegram com LLM](#-assistente-no-telegram-com-llm)
-8. [Estrutura do Repositório](#-estrutura-do-repositório)
-9. [Resultados e Métricas de Validação](#-resultados-e-métricas-de-validação)
-10. [Guia de Instalação e Execução](#-guia-de-instalação-e-execução)
+2. [Atualizações Recentes (03/11/2026)](#-atualizações-recentes-03112026)
+3. [Fluxo Operacional de Campo](#-fluxo-operacional-de-campo)
+4. [Saída Enriquecida & Síntese Prescritiva por LLM](#-saída-enriquecida--síntese-prescritiva-por-llm)
+5. [Arquitetura da Rede Neural Multitarefa](#-arquitetura-da-rede-neural-multitarefa)
+6. [Diferenciação para Produtores Orgânicos](#-diferenciação-para-produtores-orgânicos)
+7. [Adaptação Regional para Rio Claro - SP](#-adaptação-regional-para-rio-claro---sp)
+8. [Assistente no Telegram com LLM](#-assistente-no-telegram-com-llm)
+9. [Estrutura do Repositório](#-estrutura-do-repositório)
+10. [Resultados e Métricas de Validação](#-resultados-e-métricas-de-validação)
+11. [Guia de Instalação e Execução](#-guia-de-instalação-e-execução)
+
+---
+
+## 🆕 Atualizações Recentes (03/11/2026)
+Consulte o relatório detalhado em [CHANGELOG_2026-11-03.md](CHANGELOG_2026-11-03.md):
+- **Transcrição de Voz para Texto:** Envio de notas de áudio no Telegram com transcrição automática por IA e resposta exclusivamente em texto rápido.
+- **Novo Prompt do Agrônomo Parceiro:** Persona experiente e acolhedora de campo, respostas diretas na primeira frase e formato adaptativo sem enrolação.
+- **Cascata Resiliente no Gemini:** Utilização dos modelos `gemini-3-flash-preview` e `gemini-3.1-flash-lite` com 1.500 tokens e verificação ativa contra respostas cortadas.
+- **Higienização de Markdown no Telegram:** Prevenção de erros de formatação com substituição automática de listas por bullets `• ` e negrito compatível.
+- **Injeção de Microclima em Tempo Real:** Dados de temperatura, umidade do ar, vento e chance de chuva em Rio Claro - SP integrados ao contexto da IA.
 
 ---
 
